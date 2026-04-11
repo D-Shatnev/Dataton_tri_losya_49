@@ -2,7 +2,7 @@ from csv import reader
 from pathlib import Path
 
 
-def precision_k(reference: str|Path, predict: str|Path) -> dict:
+def precision_k(reference: str | Path, predict: str | Path) -> dict:
     """
     Calculates precision@k metric for predictions csv file
 
@@ -30,12 +30,9 @@ def precision_k(reference: str|Path, predict: str|Path) -> dict:
             result[line[0]] = {
                 "extra": list(predictions - y[line[0]]),
                 "missing": list(y[line[0]] - predictions),
-                "score": 1 - len(predictions - y[line[0]])/len(predictions)
+                "score": 1 - len(predictions - y[line[0]]) / len(predictions),
             }
             count += 1
             total_score += result[line[0]]["score"]
 
-    return {
-        "score": total_score / count,
-        "detail": result
-    }
+    return {"score": total_score / count, "detail": result}
