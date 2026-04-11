@@ -1,0 +1,30 @@
+# Environment / secrets
+.env
+secrets/*
+!secrets/*.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+.python-version
+
+# Ruff / linters
+.ruff_cache/
+
+# Pytest
+.pytest_cache/
+.coverage
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
