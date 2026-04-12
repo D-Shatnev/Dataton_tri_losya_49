@@ -10,7 +10,12 @@ requires-python = ">=3.13"
 dependencies = [
     "nbformat==5.10.4",
     "numpy==2.4.4",
-    "plotly==6.7.0"
+    "plotly==6.7.0",
+    "pandas>=2.2.3",
+    "onnxruntime-gpu==1.20.2",
+    "faiss-cpu==1.13.2",
+    "scipy>=1.17.1",
+    "soundfile==0.12.1",
 ]
 
 [project.readme]
@@ -21,12 +26,12 @@ content-type = "text/markdown"
 Homepage = "https://github.com/hackathonsrus/Dataton_tri_losya_49"
 Repository = "https://github.com/hackathonsrus/Dataton_tri_losya_49.git"
 
+[project.scripts]
+speakerid-infer = "dataton_tri_losya_49.cli.infer:main"
+speakerid-experiment = "dataton_tri_losya_49.cli.experiment:main"
+
 [project.optional-dependencies]
-dev = [
-    "pylint==4.0.5",
-    "pytest>=8.3",
-    "ruff>=0.9",
-]
+dev = ["pylint==4.0.5", "pytest>=8.3", "ruff>=0.9"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
