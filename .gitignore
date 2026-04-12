@@ -28,3 +28,9 @@ venv/
 
 # OS
 .DS_Store
+
+# Data / artifacts
+/data/
+/experiments/
+*.npz
+*.npy
