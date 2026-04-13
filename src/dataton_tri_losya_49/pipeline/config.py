@@ -57,7 +57,8 @@ class DataSection:
 
 @dataclass(frozen=True)
 class EncoderSection:
-    """Encoder (embedder) configuration.
+    """
+    Encoder (embedder) configuration.
 
     Attributes:
         type: Encoder type identifier. For now only "onnx" is supported.
@@ -114,6 +115,20 @@ class ExperimentConfig:
 
 
 def _require(d: dict[str, Any], key: str, section: str) -> Any:
+    """
+    Get a required key from a dict or raise a helpful error.
+
+    Args:
+        d: Raw section mapping (parsed from TOML).
+        key: Required key.
+        section: TOML section name (used only for error message).
+
+    Returns:
+        The value stored under key.
+
+    Raises:
+        ValueError: If key is absent in d.
+    """
     if key not in d:
         raise ValueError(f"Missing key '{key}' in section [{section}]")
     return d[key]
@@ -123,7 +138,13 @@ def load_experiment_config(path: Path) -> ExperimentConfig:
     """
     Load and validate an experiment TOML config.
 
-    All relative paths in config are resolved against the repo root (current working directory).
+    The config is parsed into a typed dataclass tree and validated by
+    :func:_validate_config.
+
+    Path handling:
+        - This function **does not** resolve paths to absolute.
+        - Resolution is performed later in :func:dataton_tri_losya_49.pipeline.runner.run_experiment.
+        - Therefore, all relative paths are interpreted relative to the current working directory.
 
     Args:
         path: Path to a TOML file.
@@ -179,15 +200,16 @@ def _validate_config(cfg: ExperimentConfig) -> None:
     """
     Validate basic config invariants.
 
-    This function intentionally does **not** validate that a particular
+    This function checks *generic* constraints (non-empty strings, positive
+    integers, etc.). It intentionally does **not** validate whether a particular
     encoder.type or index.backend is supported.
 
-    Supported implementations are enforced in factories
-    (:func:dataton_tri_losya_49.pipeline.runner.make_encoder,
-    :func:dataton_tri_losya_49.pipeline.runner.make_indexer).
+    Supported implementations are enforced in factories:
+        - :func:dataton_tri_losya_49.pipeline.runner.make_encoder
+        - :func:dataton_tri_losya_49.pipeline.runner.make_indexer
 
-    Keeping this validation backend-agnostic makes it easier to add new
-    encoders/indexers without touching multiple modules.
+    This separation keeps the config schema stable and makes it easier to add
+    new implementations without editing validation logic.
     """
 
     if not str(cfg.encoder.type).strip():
