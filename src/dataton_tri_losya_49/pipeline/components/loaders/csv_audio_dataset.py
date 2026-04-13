@@ -28,24 +28,20 @@ from dataton_tri_losya_49.pipeline.components.loaders.soundfile import SoundFile
 
 
 def crop_or_pad_repeat_start(waveform: np.ndarray, num_samples: int) -> np.ndarray:
-    """Normalize waveform length to exactly num_samples.
+    """
+    Normalize waveform length to exactly num_samples.
 
     This function follows the baseline idea of deterministic chunking:
     - if waveform is longer than num_samples, it is cropped from the start
     - if waveform is shorter, it is repeated (tiled) until enough samples are available
     - if waveform has zero length, it returns zeros
 
-    Parameters
-    ----------
-    waveform:
-        Mono waveform, shape (T,)
-    num_samples:
-        Desired number of samples in output
+    Args:
+        waveform: Mono waveform, shape (T,)
+        num_samples: Desired number of samples in output
 
-    Returns
-    -------
-    np.ndarray
-        Waveform of shape (num_samples,) and dtype float32
+    Returns:
+        np.ndarray: Waveform of shape (num_samples,) and dtype float32
     """
 
     target = int(num_samples)
@@ -77,21 +73,14 @@ class CsvAudioDatasetLoader:
 
     This component is designed for reproducible evaluation and inference.
 
-    Parameters
-    ----------
-    csv_path:
-        Path to a CSV file
-    root:
-        Root directory used to resolve relative file paths from CSV
-    filepath_col:
-        Name of the CSV column containing audio file paths
-    speaker_id_col:
-        Name of the CSV column containing speaker ids. If missing, labels are None
-    chunk_seconds:
-        Fixed chunk length in seconds. If audio is longer, it is cropped from start.
-        If shorter, it is repeated
-    loader:
-        Audio loader implementation. Defaults to SoundFileWaveformLoader
+    Args:
+        csv_path: Path to a CSV file
+        root: Root directory used to resolve relative file paths from CSV
+        filepath_col: Name of the CSV column containing audio file paths
+        speaker_id_col: Name of the CSV column containing speaker ids. If missing, labels are None
+        chunk_seconds: Fixed chunk length in seconds. If audio is longer, it is cropped from start.
+            If shorter, it is repeated
+        loader: Audio loader implementation. Defaults to SoundFileWaveformLoader
     """
 
     csv_path: Path
