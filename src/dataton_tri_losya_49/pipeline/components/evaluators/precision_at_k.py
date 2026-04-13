@@ -33,7 +33,8 @@ def _move_self_to_end(indices: np.ndarray) -> np.ndarray:
 
 
 def precision_at_k_from_indices(indices: np.ndarray, labels: np.ndarray, ks: list[int]) -> dict[str, float]:
-    """Compute Precision@K from neighbor indices.
+    """
+    Compute Precision@K from neighbor indices.
 
     This function evaluates retrieval quality given precomputed neighbor indices.
 
