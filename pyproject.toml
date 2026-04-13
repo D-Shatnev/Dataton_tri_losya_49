@@ -8,9 +8,15 @@ version = "0.0.1"
 description = "A project for speaker recognition by voice, resistant to various distortions."
 requires-python = ">=3.13"
 dependencies = [
+    "librosa==0.11.0",
     "nbformat==5.10.4",
     "numpy==2.4.4",
-    "plotly==6.7.0"
+    "plotly==6.7.0",
+    "soundfile==0.13.1",
+    "speechbrain==1.1.0",
+    "tqdm==4.66.5",
+    "qdrant_client==1.17.1",
+    "onnxruntime==1.24.4"
 ]
 
 [project.readme]
@@ -25,7 +31,7 @@ Repository = "https://github.com/hackathonsrus/Dataton_tri_losya_49.git"
 dev = [
     "pylint==4.0.5",
     "pytest>=8.3",
-    "ruff>=0.9",
+    "ruff>=0.9"
 ]
 
 [tool.setuptools.packages.find]
