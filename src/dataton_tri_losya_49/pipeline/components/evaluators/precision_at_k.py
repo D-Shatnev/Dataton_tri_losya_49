@@ -39,7 +39,7 @@ def precision_at_k_from_indices(indices: np.ndarray, labels: np.ndarray, ks: lis
     This function evaluates retrieval quality given precomputed neighbor indices.
 
     Notes on self-index (baseline-style):
-      - `indices` may include the query item itself (self-index) in any column.
+      - indices may include the query item itself (self-index) in any column.
       - we move self-indices to the end of each row (stable, preserving other order)
         and then take the first k_max = max(ks) columns.
       - in typical setups (e.g. FAISS search over the same set) you should provide at
@@ -106,7 +106,7 @@ class PrecisionAtKEvaluator:
     """
     Evaluator wrapper for Precision@K.
 
-    This class provides a small OOP-style adapter around :func:`precision_at_k_from_indices`
+    This class provides a small OOP-style adapter around :func:precision_at_k_from_indices
     so it can be plugged into the pipeline components API.
     """
 
