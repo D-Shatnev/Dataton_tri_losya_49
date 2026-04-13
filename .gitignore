@@ -34,3 +34,14 @@ venv/
 /experiments/
 *.npz
 *.npy
+
+# Model artifacts: keep directory, ignore large weights.
+models/*.onnx
+models/*.pt
+models/*.pth
+models/*.ckpt
+models/*.bin
+
+# Local (machine-specific) experiment configs.
+# Keep reproducible configs in configs/experiments/.
+configs/local/
