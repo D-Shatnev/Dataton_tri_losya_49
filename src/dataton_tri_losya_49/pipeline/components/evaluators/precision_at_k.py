@@ -18,7 +18,23 @@ import numpy as np
 
 
 def _move_self_to_end(indices: np.ndarray) -> np.ndarray:
-    """Return indices with potential self-index moved to the end of each row."""
+    """
+    Return indices with potential self-index moved to the end of each row.
+
+    For each row i, if the value i appears anywhere in that row, it is shifted
+    to the last position using a stable argsort. All other values retain their
+    relative order. Rows without a self-index are left unchanged.
+
+    Args:
+        indices: Integer array of shape [N, M] with neighbor ids per query.
+
+    Returns:
+        Array of the same shape and dtype as indices, with self-indices
+        moved to the last column of each row.
+
+    Raises:
+        ValueError: If indices is not a 2D array.
+    """
 
     idx = np.asarray(indices, dtype=np.int64)
     if idx.ndim != 2:
@@ -106,7 +122,7 @@ class PrecisionAtKEvaluator:
     """
     Evaluator wrapper for Precision@K.
 
-    This class provides a small OOP-style adapter around :func:precision_at_k_from_indices
+    This class provides a small OOP-style adapter around precision_at_k_from_indices
     so it can be plugged into the pipeline components API.
     """
 
