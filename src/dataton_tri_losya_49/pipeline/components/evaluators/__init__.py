@@ -1,11 +1,7 @@
 """
 Pipeline evaluators.
 
-This package contains implementations of :class:dataton_tri_losya_49.pipeline.interfaces.Evaluator.
-
-Public API:
-    - :class:PrecisionAtKEvaluator
-    - :func:precision_at_k_from_indices
+This package contains implementations of the Evaluator interface.
 """
 
 from __future__ import annotations
