@@ -8,9 +8,7 @@ version = "0.0.1"
 description = "A project for speaker recognition by voice, resistant to various distortions."
 requires-python = ">=3.13"
 dependencies = [
-    "nbformat==5.10.4",
     "numpy==2.4.4",
-    "plotly==6.7.0",
     "pandas>=2.2.3",
     "onnxruntime-gpu==1.20.2",
     "faiss-cpu==1.13.2",
@@ -32,6 +30,7 @@ speakerid-experiment = "dataton_tri_losya_49.cli.experiment:main"
 
 [project.optional-dependencies]
 dev = ["pylint==4.0.5", "pytest>=8.3", "ruff>=0.9"]
+notebooks = ["nbformat==5.10.4", "plotly==6.7.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
