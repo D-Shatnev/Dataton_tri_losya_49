@@ -1,39 +1,109 @@
 """
-Experiment configuration for the modular speaker recognition pipeline.
+Configuration schemas for the modular speaker recognition pipeline.
 
-This module defines a typed, validated configuration schema used to run reproducible
-experiments via :mod:dataton_tri_losya_49.pipeline.runner.
+Two config flavors are supported:
 
-The primary entrypoint is :func:load_experiment_config, which reads a TOML file
-and returns an :class:ExperimentConfig dataclass.
+* :class:ExperimentConfig - full dev-experiment config (all sections).
+  Loaded by :func:load_experiment_config from a TOML file.
+  Consumed by speakerid-experiment CLI and :func:~dataton_tri_losya_49.pipeline.runner.run_experiment.
 
-TOML structure (high-level):
+* :class:InferenceConfig - lightweight inference config (no data paths, no evaluation).
+  Loaded by :func:load_inference_config from a TOML file.
+  Consumed by speakerid-infer CLI; file paths (csv / out / root) come from CLI args.
+
+TOML structure for experiments (high-level):
 
 * [experiment]: experiment name and output directory
 * [data]: input CSV with audio paths/labels and preprocessing parameters
 * [encoder]: embedding model settings (type, path, providers)
+* [loader]: waveform loader type and parameters
 * [index]: nearest-neighbor backend and top-k
-* [evaluation]: metric parameters and optional external labels
+* [evaluation]: metric type, k values, optional external labels
+
+TOML structure for inference (high-level):
+
+* [encoder]: embedding model settings (type, model_path default, output_name)
+* [loader]: waveform loader type and parameters
+* [index]: nearest-neighbor backend and top-k
+* [defaults]: chunk_seconds, batch_size, filepath_col
 
 Notes:
-    - Relative paths are interpreted relative to the current working directory
-      (repo root in our typical workflow).
-    - Only a subset of backends may be supported depending on the current
-      iteration (see :func:_validate_config).
+    - Relative paths are interpreted relative to the current working directory.
+    - encoder.providers is optional; None (absent from TOML) means auto-detect
+      at runtime via :func:~dataton_tri_losya_49.pipeline.registry.auto_providers.
+    - [loader] and [evaluation] sections are optional in experiment configs
+      and fall back to sensible defaults (soundfile / precision_at_k).
 """
 
 from __future__ import annotations
 
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from dataton_tri_losya_49.constants import (
+    DEFAULT_BATCH_SIZE,
     DEFAULT_CHUNK_SECONDS,
     DEFAULT_FILEPATH_COL,
     DEFAULT_SPEAKER_ID_COL,
+    DEFAULT_TARGET_SR,
 )
+
+# ---------------------------------------------------------------------------
+# Shared sections
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class EncoderSection:
+    """
+    Encoder (embedder) configuration.
+
+    Attributes:
+        type: Encoder type identifier (e.g. "onnx").
+            See :func:~dataton_tri_losya_49.pipeline.registry.build_encoder for supported values.
+        model_path: Path to the model artifact.
+        output_name: Output node name used when extracting embeddings.
+        providers: ONNX Runtime providers priority list.
+            None (default) means auto-detect at runtime:
+            CUDA if available, CPU otherwise.
+    """
+
+    type: str
+    model_path: Path
+    output_name: str = "embeddings"
+    providers: list[str] | None = None
+
+
+@dataclass(frozen=True)
+class LoaderSection:
+    """
+    Waveform loader configuration.
+
+    Attributes:
+        type: Loader type identifier (e.g. "soundfile").
+            See :func:~dataton_tri_losya_49.pipeline.registry.build_waveform_loader for supported values.
+        target_sr: Target sample rate in Hz. Audio will be resampled if necessary.
+        clip: If True, clip waveform values to [-1, 1].
+    """
+
+    type: str = "soundfile"
+    target_sr: int = DEFAULT_TARGET_SR
+    clip: bool = False
+
+
+@dataclass(frozen=True)
+class IndexSection:
+    """Nearest-neighbor index configuration."""
+
+    topk: int = 10
+    backend: str = "faiss_ip"
+
+
+# ---------------------------------------------------------------------------
+# Experiment-only sections
+# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -56,54 +126,62 @@ class DataSection:
 
 
 @dataclass(frozen=True)
-class EncoderSection:
-    """
-    Encoder (embedder) configuration.
-
-    Attributes:
-        type: Encoder type identifier. For now only "onnx" is supported.
-        model_path: Path to the model artifact.
-        providers: ONNX Runtime providers priority list.
-        output_name: Output node name used when extracting embeddings.
-    """
-
-    type: str
-    model_path: Path
-    providers: list[str]
-    output_name: str = "embeddings"
-
-
-@dataclass(frozen=True)
-class IndexSection:
-    """Nearest-neighbor index configuration."""
-
-    topk: int = 10
-    backend: str = "faiss_ip"
-
-
-@dataclass(frozen=True)
 class EvaluationSection:
-    """Evaluation settings.
+    """
+    Evaluation settings.
 
     Attributes:
+        type: Evaluator type identifier (e.g. "precision_at_k").
+            See :func:~dataton_tri_losya_49.pipeline.registry.build_evaluator for supported values.
         ks: A list of k values for metrics like Precision@k.
         labels_npy: Optional path to external labels if CSV does not contain
             a speaker-id column.
     """
 
-    ks: list[int]
+    ks: list[int] = field(default_factory=lambda: [10])
+    type: str = "precision_at_k"
     labels_npy: Path | None = None
+
+
+# ---------------------------------------------------------------------------
+# Inference-only section
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class InferenceDefaultsSection:
+    """
+    Default non-path parameters for the inference CLI.
+
+    These values are baked into the inference TOML and can be overridden
+    by CLI flags (--chunk-seconds, --batch-size, --filepath-col).
+
+    Attributes:
+        chunk_seconds: Fixed chunk length in seconds for audio normalization.
+        batch_size: Number of waveforms per encoder call.
+        filepath_col: CSV column that contains relative audio file paths.
+    """
+
+    chunk_seconds: float = DEFAULT_CHUNK_SECONDS
+    batch_size: int = DEFAULT_BATCH_SIZE
+    filepath_col: str = DEFAULT_FILEPATH_COL
+
+
+# ---------------------------------------------------------------------------
+# Root config objects
+# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
 class ExperimentConfig:
-    """Root config object used by :func:dataton_tri_losya_49.pipeline.runner.run_experiment."""
+    """Root config object used by :func:~dataton_tri_losya_49.pipeline.runner.run_experiment."""
 
     experiment: ExperimentSection
     data: DataSection
     encoder: EncoderSection
     index: IndexSection
     evaluation: EvaluationSection
+    loader: LoaderSection = field(default_factory=LoaderSection)
 
     @property
     def run_dir(self) -> Path:
@@ -112,6 +190,32 @@ class ExperimentConfig:
         It is computed as experiment.out_dir / experiment.name.
         """
         return self.experiment.out_dir / self.experiment.name
+
+
+@dataclass(frozen=True)
+class InferenceConfig:
+    """
+    Lightweight config for the inference CLI.
+
+    Unlike :class:ExperimentConfig, this config does not contain data paths
+    (CSV, output) or evaluation settings - those are provided via CLI flags.
+
+    Attributes:
+        encoder: Encoder type / default model path / output name.
+        index: Indexer backend and top-k.
+        loader: Waveform loader type and parameters.
+        defaults: Non-path inference defaults (chunk_seconds, batch_size, filepath_col).
+    """
+
+    encoder: EncoderSection
+    index: IndexSection
+    loader: LoaderSection
+    defaults: InferenceDefaultsSection
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 
 def _require(d: dict[str, Any], key: str, section: str) -> Any:
@@ -134,17 +238,21 @@ def _require(d: dict[str, Any], key: str, section: str) -> Any:
     return d[key]
 
 
+# ---------------------------------------------------------------------------
+# Loaders
+# ---------------------------------------------------------------------------
+
+
 def load_experiment_config(path: Path) -> ExperimentConfig:
     """
     Load and validate an experiment TOML config.
 
     The config is parsed into a typed dataclass tree and validated by
-    :func:_validate_config.
+    :func:_validate_experiment_config.
 
     Path handling:
-        - This function **does not** resolve paths to absolute.
-        - Resolution is performed later in :func:dataton_tri_losya_49.pipeline.runner.run_experiment.
-        - Therefore, all relative paths are interpreted relative to the current working directory.
+        This function **does not** resolve paths to absolute.
+        Resolution is performed later in :func:~dataton_tri_losya_49.pipeline.runner.run_experiment.
 
     Args:
         path: Path to a TOML file.
@@ -155,14 +263,18 @@ def load_experiment_config(path: Path) -> ExperimentConfig:
     Raises:
         ValueError: If required keys are missing or configuration values are invalid.
     """
-
     raw = tomllib.loads(path.read_text(encoding="utf-8"))
 
     exp_raw = raw.get("experiment", {})
     data_raw = raw.get("data", {})
     enc_raw = raw.get("encoder", {})
+    ldr_raw = raw.get("loader", {})
     idx_raw = raw.get("index", {})
     eval_raw = raw.get("evaluation", {})
+
+    # providers: absent or null in TOML -> None (auto-detect)
+    raw_providers = enc_raw.get("providers", None)
+    providers: list[str] | None = [str(x) for x in raw_providers] if raw_providers is not None else None
 
     cfg = ExperimentConfig(
         experiment=ExperimentSection(
@@ -179,38 +291,124 @@ def load_experiment_config(path: Path) -> ExperimentConfig:
         encoder=EncoderSection(
             type=str(_require(enc_raw, "type", "encoder")),
             model_path=Path(str(_require(enc_raw, "model_path", "encoder"))),
-            providers=[str(x) for x in _require(enc_raw, "providers", "encoder")],
             output_name=str(enc_raw.get("output_name", "embeddings")),
+            providers=providers,
+        ),
+        loader=LoaderSection(
+            type=str(ldr_raw.get("type", "soundfile")),
+            target_sr=int(ldr_raw.get("target_sr", DEFAULT_TARGET_SR)),
+            clip=bool(ldr_raw.get("clip", False)),
         ),
         index=IndexSection(
             topk=int(idx_raw.get("topk", 10)),
             backend=str(idx_raw.get("backend", "faiss_ip")),
         ),
         evaluation=EvaluationSection(
+            type=str(eval_raw.get("type", "precision_at_k")),
             ks=[int(x) for x in eval_raw.get("ks", [10])],
             labels_npy=(Path(str(eval_raw["labels_npy"])) if "labels_npy" in eval_raw else None),
         ),
     )
 
-    _validate_config(cfg)
+    _validate_experiment_config(cfg)
     return cfg
 
 
-def _validate_config(cfg: ExperimentConfig) -> None:
+def load_inference_config(path: Path) -> InferenceConfig:
     """
-    Validate basic config invariants.
+    Load an inference TOML config.
 
-    This function checks *generic* constraints (non-empty strings, positive
-    integers, etc.). It intentionally does **not** validate whether a particular
-    encoder.type or index.backend is supported.
+    Inference config is simpler than experiment config: it describes
+    which components to use and their non-path defaults. Data paths
+    (csv, output) are provided separately via CLI.
 
-    Supported implementations are enforced in factories:
-        - :func:dataton_tri_losya_49.pipeline.runner.make_encoder
-        - :func:dataton_tri_losya_49.pipeline.runner.make_indexer
+    Args:
+        path: Path to a TOML file (e.g. configs/inference/baseline.toml).
 
-    This separation keeps the config schema stable and makes it easier to add
-    new implementations without editing validation logic.
+    Returns:
+        Parsed :class:InferenceConfig.
+
+    Raises:
+        ValueError: If required keys are missing or values are invalid.
     """
+    raw = tomllib.loads(path.read_text(encoding="utf-8"))
+
+    enc_raw = raw.get("encoder", {})
+    ldr_raw = raw.get("loader", {})
+    idx_raw = raw.get("index", {})
+    def_raw = raw.get("defaults", {})
+
+    raw_providers = enc_raw.get("providers", None)
+    providers: list[str] | None = [str(x) for x in raw_providers] if raw_providers is not None else None
+
+    cfg = InferenceConfig(
+        encoder=EncoderSection(
+            type=str(_require(enc_raw, "type", "encoder")),
+            model_path=Path(str(enc_raw.get("model_path", "models/baseline.onnx"))),
+            output_name=str(enc_raw.get("output_name", "embeddings")),
+            providers=providers,
+        ),
+        loader=LoaderSection(
+            type=str(ldr_raw.get("type", "soundfile")),
+            target_sr=int(ldr_raw.get("target_sr", DEFAULT_TARGET_SR)),
+            clip=bool(ldr_raw.get("clip", False)),
+        ),
+        index=IndexSection(
+            topk=int(idx_raw.get("topk", 10)),
+            backend=str(idx_raw.get("backend", "faiss_ip")),
+        ),
+        defaults=InferenceDefaultsSection(
+            chunk_seconds=float(def_raw.get("chunk_seconds", DEFAULT_CHUNK_SECONDS)),
+            batch_size=int(def_raw.get("batch_size", DEFAULT_BATCH_SIZE)),
+            filepath_col=str(def_raw.get("filepath_col", DEFAULT_FILEPATH_COL)),
+        ),
+    )
+
+    _validate_inference_config(cfg)
+    return cfg
+
+
+# ---------------------------------------------------------------------------
+# Validators
+# ---------------------------------------------------------------------------
+
+
+def _validate_experiment_config(cfg: ExperimentConfig) -> None:
+    """
+    Validate experiment config invariants.
+
+    Checks generic constraints (non-empty strings, positive integers, etc.).
+    Encoder type / indexer backend validity is enforced by the registry factories,
+    not here - this separation keeps config schema stable.
+    """
+    if not str(cfg.encoder.type).strip():
+        raise ValueError("encoder.type must be a non-empty string")
+
+    if not str(cfg.index.backend).strip():
+        raise ValueError("index.backend must be a non-empty string")
+
+    if cfg.index.topk <= 0:
+        raise ValueError("index.topk must be > 0")
+
+    # providers: None is valid (auto-detect); if given, must be non-empty
+    if cfg.encoder.providers is not None and len(cfg.encoder.providers) == 0:
+        raise ValueError("encoder.providers must be non-empty when explicitly specified")
+
+    if any(k <= 0 for k in cfg.evaluation.ks):
+        raise ValueError("evaluation.ks must contain only positive integers")
+
+    if cfg.data.chunk_seconds <= 0:
+        raise ValueError("data.chunk_seconds must be > 0")
+
+    if not str(cfg.loader.type).strip():
+        raise ValueError("loader.type must be a non-empty string")
+
+    if cfg.loader.target_sr <= 0:
+        raise ValueError("loader.target_sr must be > 0")
+
+
+def _validate_inference_config(cfg: InferenceConfig) -> None:
+    """Validate inference config invariants."""
 
     if not str(cfg.encoder.type).strip():
         raise ValueError("encoder.type must be a non-empty string")
@@ -221,11 +419,17 @@ def _validate_config(cfg: ExperimentConfig) -> None:
     if cfg.index.topk <= 0:
         raise ValueError("index.topk must be > 0")
 
-    if len(cfg.encoder.providers) == 0:
-        raise ValueError("encoder.providers must be non-empty")
+    if cfg.encoder.providers is not None and len(cfg.encoder.providers) == 0:
+        raise ValueError("encoder.providers must be non-empty when explicitly specified")
 
-    if any(k <= 0 for k in cfg.evaluation.ks):
-        raise ValueError("evaluation.ks must contain only positive integers")
+    if not str(cfg.loader.type).strip():
+        raise ValueError("loader.type must be a non-empty string")
 
-    if cfg.data.chunk_seconds <= 0:
-        raise ValueError("data.chunk_seconds must be > 0")
+    if cfg.loader.target_sr <= 0:
+        raise ValueError("loader.target_sr must be > 0")
+
+    if cfg.defaults.chunk_seconds <= 0:
+        raise ValueError("defaults.chunk_seconds must be > 0")
+
+    if cfg.defaults.batch_size <= 0:
+        raise ValueError("defaults.batch_size must be > 0")
