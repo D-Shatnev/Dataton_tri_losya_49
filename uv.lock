@@ -100,11 +100,9 @@ version = "0.0.1"
 source = { editable = "." }
 dependencies = [
     { name = "faiss-cpu" },
-    { name = "nbformat" },
     { name = "numpy" },
     { name = "onnxruntime-gpu" },
     { name = "pandas" },
-    { name = "plotly" },
     { name = "scipy" },
     { name = "soundfile" },
 ]
@@ -115,22 +113,26 @@ dev = [
     { name = "pytest" },
     { name = "ruff" },
 ]
+notebooks = [
+    { name = "nbformat" },
+    { name = "plotly" },
+]
 
 [package.metadata]
 requires-dist = [
     { name = "faiss-cpu", specifier = "==1.13.2" },
-    { name = "nbformat", specifier = "==5.10.4" },
+    { name = "nbformat", marker = "extra == 'notebooks'", specifier = "==5.10.4" },
     { name = "numpy", specifier = "==2.4.4" },
     { name = "onnxruntime-gpu", specifier = "==1.20.2" },
     { name = "pandas", specifier = ">=2.2.3" },
-    { name = "plotly", specifier = "==6.7.0" },
+    { name = "plotly", marker = "extra == 'notebooks'", specifier = "==6.7.0" },
     { name = "pylint", marker = "extra == 'dev'", specifier = "==4.0.5" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.9" },
     { name = "scipy", specifier = ">=1.17.1" },
     { name = "soundfile", specifier = "==0.12.1" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["dev", "notebooks"]
 
 [[package]]
 name = "dill"
