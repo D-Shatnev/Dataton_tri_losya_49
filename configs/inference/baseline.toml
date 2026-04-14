@@ -1,0 +1,42 @@
+# Inference config: baseline ONNX encoder + FAISS cosine KNN.
+#
+# This file describes WHICH components to use and their non-path defaults.
+# Data paths (--csv, --out, --root) and optional model path override (--model)
+# are provided as CLI arguments.
+#
+# Minimal invocation:
+#   speakerid-infer --csv data/test_public.csv --out submission.csv
+#
+# With explicit model override:
+#   speakerid-infer --csv data/test_public.csv --out submission.csv \
+#                   --model models/my_encoder.onnx
+#
+# With custom config:
+#   speakerid-infer --csv data/test_public.csv --out submission.csv \
+#                   --config configs/inference/my_config.toml
+#
+# Providers are auto-detected at runtime:
+#   CUDA available -> ["CUDAExecutionProvider", "CPUExecutionProvider"]
+#   CUDA absent    -> ["CPUExecutionProvider"]
+# To pin providers explicitly, add:
+#   providers = ["CPUExecutionProvider"]
+
+[encoder]
+type        = "onnx"
+model_path  = "models/baseline.onnx"   # default; overrideable via --model
+output_name = "embeddings"
+# providers intentionally absent -> auto-detect at runtime
+
+[loader]
+type      = "soundfile"
+target_sr = 16000
+clip      = false
+
+[index]
+backend = "faiss_ip"
+topk    = 10
+
+[defaults]
+chunk_seconds = 6.0
+batch_size    = 1
+filepath_col  = "filepath"
