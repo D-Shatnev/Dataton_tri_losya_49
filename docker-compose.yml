@@ -1,0 +1,57 @@
+# Speaker Recognition pipeline — Docker Compose
+#
+# Prerequisites on host:
+#   - Docker Engine >= 24
+#   - nvidia-container-toolkit (for GPU access)
+#
+# Build image once:
+#   docker compose build
+#
+# Run inference:
+#   docker compose run --rm infer
+#
+# Run experiment:
+#   docker compose run --rm experiment
+
+name: speakerid
+
+x-base: &base
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: speakerid:latest
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: all
+            capabilities: [gpu]
+  environment:
+    NVIDIA_VISIBLE_DEVICES: all
+  volumes:
+    - ./data:/app/data
+    - ./models:/app/models
+
+services:
+  infer:
+    <<: *base
+    command:
+      - speakerid-infer
+      - --csv
+      - data/test_public.csv
+      - --out
+      - data/submission.csv
+
+  experiment:
+    <<: *base
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./experiments:/app/experiments
+    command:
+      - speakerid-experiment
+      - --config
+      - configs/experiments/onnx_baseline_test_public.toml
+      - --batch-size
+      - "1"
