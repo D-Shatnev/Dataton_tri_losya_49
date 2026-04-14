@@ -29,6 +29,9 @@ venv/
 # OS
 .DS_Store
 
+# Submission artifacts in project root
+/submission*.csv
+
 # Data / artifacts — keep directory structure, ignore actual data files
 /data/*
 !/data/.gitkeep
