@@ -52,6 +52,7 @@ from dataton_tri_losya_49.pipeline.config import (
     LoaderSection,
 )
 from dataton_tri_losya_49.pipeline.interfaces import DatasetLoader, Encoder, Evaluator, Indexer, WaveformLoader
+from dataton_tri_losya_49.pipeline.utils import resolve_path
 
 # ---------------------------------------------------------------------------
 # Provider helpers
@@ -92,24 +93,6 @@ def resolve_providers(providers: list[str] | None) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# Path helper (local, avoids circular imports with runner)
-# ---------------------------------------------------------------------------
-
-
-def _resolve(p: Path) -> Path:
-    """
-    Resolve a path to absolute.
-
-    Args:
-        p: Input path.
-
-    Returns:
-        p if it is already absolute, otherwise Path(p).resolve().
-    """
-    return p if p.is_absolute() else Path(p).resolve()
-
-
-# ---------------------------------------------------------------------------
 # Encoder factory
 # ---------------------------------------------------------------------------
 
@@ -139,7 +122,7 @@ def build_encoder(
     """
     if section.type == "onnx":
         effective_providers = providers if providers is not None else resolve_providers(section.providers)
-        effective_path = _resolve(model_path_override if model_path_override is not None else section.model_path)
+        effective_path = resolve_path(model_path_override if model_path_override is not None else section.model_path)
         return OnnxEncoder(
             model_path=effective_path,
             providers=effective_providers,
@@ -267,8 +250,8 @@ def build_dataset_loader(
     waveform_loader = build_waveform_loader(loader_section)
 
     return CsvAudioDatasetLoader(
-        csv_path=_resolve(data_section.csv),
-        root=_resolve(data_section.root),
+        csv_path=resolve_path(data_section.csv),
+        root=resolve_path(data_section.root),
         filepath_col=data_section.filepath_col,
         speaker_id_col=data_section.speaker_id_col,
         chunk_seconds=float(data_section.chunk_seconds),
