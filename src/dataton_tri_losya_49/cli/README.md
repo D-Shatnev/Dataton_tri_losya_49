@@ -6,12 +6,13 @@
 CLI лишь:
 
 - парсит аргументы;
-- вызывает соответствующие функции/компоненты пайплайна;
+- загружает TOML-конфиг;
+- вызывает соответствующие функции/компоненты пайплайна через registry;
 - пишет артефакты (через `dataton_tri_losya_49.io`).
 
 ### infer.py
 
-Основной пользовательский флоу: **CSV → submission.csv**.
+Основной пользовательский флоу: **CSV -> submission.csv**.
 
 Entry point:
 
@@ -19,12 +20,27 @@ Entry point:
 uv run speakerid-infer --help
 ```
 
-Сценарий:
+Дизайн:
+- **Компоненты и дефолты** (encoder/indexer/loader, chunk_seconds, topk и т.д.) задаются в inference TOML.
+  Дефолтный конфиг: `configs/inference/baseline.toml`; переопределить: `--config`.
+- **Пути** (`--csv`, `--out`, `--root`, `--model`) задаются аргументами CLI.
+- **Providers** определяются автоматически (CUDA -> CPU); можно переопределить в TOML.
 
-1) читаем CSV со списком файлов (`--csv`, колонка `--filepath-col`);
-2) детерминированно нарезаем/нормализуем длину аудио (`--chunk-seconds`);
-3) извлекаем эмбеддинги ONNX-моделью (`--model`, `--providers`, `--output-name`);
-4) строим retrieval (FAISS) и пишем submission (`--out`).
+Минимальный вызов:
+
+```bash
+speakerid-infer --csv data/test_public.csv --out submission.csv
+```
+
+Дополнительные переопределения:
+
+| Флаг | Что переопределяет |
+|------|-------------------|
+| `--model` | `encoder.model_path` из TOML |
+| `--k` | `index.topk` из TOML |
+| `--batch-size` | `defaults.batch_size` из TOML |
+| `--chunk-seconds` | `defaults.chunk_seconds` из TOML |
+| `--config` | путь до inference TOML |
 
 ### experiment.py
 
@@ -39,15 +55,16 @@ uv run speakerid-experiment --help
 Сценарий:
 
 - `load_experiment_config()` читает TOML и возвращает `ExperimentConfig`.
-- `run_experiment()` делает inference → index → (опционально) evaluation и сохраняет:
+- `run_experiment()` делает inference -> index -> (опционально) evaluation и сохраняет:
   - `config.toml` (копия конфига);
   - `embeddings.npz`;
   - `submission.csv`;
   - `metrics.json` (если доступны метки).
+- При запуске выводятся используемые компоненты (encoder type, indexer, loader, evaluator, providers).
 
 ### Как расширять
 
-- Если добавляете новый `encoder.type`/`index.backend`, CLI обычно менять не нужно:
-  расширяйте фабрики в `pipeline/runner.py` и (при необходимости) схему в `pipeline/config.py`.
-- Если добавляете новый сценарий запуска — создавайте новый модуль в `cli/` и
+- Если добавляете новый `encoder.type` или `index.backend`:
+  добавьте ветку в `pipeline/registry.py` - CLI менять не нужно.
+- Если добавляете новый сценарий запуска - создавайте новый модуль в `cli/` и
   регистрируйте entrypoint в `pyproject.toml`.
