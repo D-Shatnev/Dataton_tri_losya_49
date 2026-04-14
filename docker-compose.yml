@@ -7,11 +7,17 @@
 # Build image once:
 #   docker compose build
 #
-# Run inference:
+# Run inference (defaults to data/test_public.csv -> data/submission.csv):
 #   docker compose run --rm infer
+#
+# Run inference on a custom CSV:
+#   CSV_PATH=data/test_public2.csv OUT_PATH=data/sub2.csv docker compose run --rm infer
 #
 # Run experiment:
 #   docker compose run --rm experiment
+#
+# Run experiment with custom config:
+#   EXPERIMENT_CONFIG=configs/experiments/my_exp.toml docker compose run --rm experiment
 
 name: speakerid
 
@@ -26,32 +32,43 @@ x-base: &base
         devices:
           - driver: nvidia
             count: all
-            capabilities: [gpu]
+            capabilities: [ gpu ]
   environment:
     NVIDIA_VISIBLE_DEVICES: all
   volumes:
     - ./data:/app/data
     - ./models:/app/models
+    - ./configs:/app/configs
 
 services:
   infer:
     <<: *base
+    environment:
+      CSV_PATH: ${CSV_PATH:-data/test_public.csv}
+      OUT_PATH: ${OUT_PATH:-data/submission.csv}
+      ROOT_PATH: ${ROOT_PATH:-data}
     command:
       - speakerid-infer
       - --csv
-      - data/test_public.csv
+      - ${CSV_PATH:-data/test_public.csv}
       - --out
-      - data/submission.csv
+      - ${OUT_PATH:-data/submission.csv}
+      - --root
+      - ${ROOT_PATH:-data}
 
   experiment:
     <<: *base
     volumes:
       - ./data:/app/data
       - ./models:/app/models
+      - ./configs:/app/configs
       - ./experiments:/app/experiments
+    environment:
+      EXPERIMENT_CONFIG: ${EXPERIMENT_CONFIG:-configs/experiments/onnx_baseline_test_public.toml}
+      BATCH_SIZE: ${BATCH_SIZE:-1}
     command:
       - speakerid-experiment
       - --config
-      - configs/experiments/onnx_baseline_test_public.toml
+      - ${EXPERIMENT_CONFIG:-configs/experiments/onnx_baseline_test_public.toml}
       - --batch-size
-      - "1"
+      - ${BATCH_SIZE:-1}
