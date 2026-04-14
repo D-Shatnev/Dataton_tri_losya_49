@@ -29,8 +29,9 @@ venv/
 # OS
 .DS_Store
 
-# Data / artifacts
-/data/
+# Data / artifacts — keep directory structure, ignore actual data files
+/data/*
+!/data/.gitkeep
 /experiments/
 *.npz
 *.npy
