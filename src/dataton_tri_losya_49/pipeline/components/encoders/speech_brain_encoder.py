@@ -15,7 +15,7 @@ from pathlib import Path
 
 import torch
 import numpy as np
-from speechbrain.pretrained import SpeakerRecognition
+from speechbrain.inference import SpeakerRecognition
 
 from dataton_tri_losya_49.constants import (
     DEFAULT_SPEECHBRAIN_DIM_PROBE_NUM_SAMPLES,
