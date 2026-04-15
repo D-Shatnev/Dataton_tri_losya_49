@@ -40,7 +40,7 @@ from pathlib import Path
 
 import onnxruntime as ort
 
-from dataton_tri_losya_49.pipeline.components.encoders import OnnxEncoder
+from dataton_tri_losya_49.pipeline.components.encoders import OnnxEncoder, TitaNetEncoder
 from dataton_tri_losya_49.pipeline.components.evaluators import PrecisionAtKEvaluator
 from dataton_tri_losya_49.pipeline.components.indexers import FaissInnerProductIndexer
 from dataton_tri_losya_49.pipeline.components.loaders import CsvAudioDatasetLoader, SoundFileWaveformLoader
@@ -119,6 +119,7 @@ def build_encoder(
 
     Supported types:
         - "onnx" → :class:~dataton_tri_losya_49.pipeline.components.encoders.OnnxEncoder
+        - "titanet" → :class:~dataton_tri_losya_49.pipeline.components.encoders.TitaNetEncoder
     """
     if section.type == "onnx":
         effective_providers = providers if providers is not None else resolve_providers(section.providers)
@@ -129,8 +130,21 @@ def build_encoder(
             output_name=section.output_name,
         )
 
+    if section.type == "titanet":
+        # section.model_path holds either a HuggingFace model ID or a local .nemo path.
+        # providers list is repurposed as device hint: first element is used if present.
+        device: str | None = None
+        effective_providers = providers if providers is not None else (section.providers or [])
+        if effective_providers:
+            raw = effective_providers[0].lower()
+            device = "cuda" if "cuda" in raw else "cpu"
+        return TitaNetEncoder(
+            model_name=str(section.model_path),
+            device=device,
+        )
+
     raise ValueError(
-        f"Unknown encoder type: {section.type!r}. " "Register a new encoder in pipeline/registry.py :: build_encoder()."
+        f"Unknown encoder type: {section.type!r}. Register a new encoder in pipeline/registry.py :: build_encoder()."
     )
 
 

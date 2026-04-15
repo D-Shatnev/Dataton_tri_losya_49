@@ -27,6 +27,7 @@ import numpy as np
 from dataton_tri_losya_49.io import save_embeddings_npz, write_submission_csv
 from dataton_tri_losya_49.pipeline.config import ExperimentConfig
 from dataton_tri_losya_49.pipeline.interfaces import DatasetLoader, Encoder, Evaluator, Indexer
+from dataton_tri_losya_49.pipeline.progress import ProgressTracker
 from dataton_tri_losya_49.pipeline.registry import build_dataset_loader, build_encoder, build_evaluator, build_indexer
 from dataton_tri_losya_49.pipeline.utils import resolve_path
 
@@ -133,8 +134,14 @@ def run_experiment(cfg: ExperimentConfig, config_path: Path, batch_size: int = 1
     if len(filepaths) < 2:
         raise ValueError(f"Dataset must contain at least 2 items to build a kNN submission (got {len(filepaths)}).")
 
+    tracked_waveforms = ProgressTracker(
+        components.dataset.iter_waveforms(),
+        total=len(filepaths),
+        desc="Encoding",
+        unit="files",
+    )
     embeddings = extract_embeddings(
-        waveforms=components.dataset.iter_waveforms(),
+        waveforms=tracked_waveforms,
         encoder=components.encoder,
         batch_size=batch_size,
     )

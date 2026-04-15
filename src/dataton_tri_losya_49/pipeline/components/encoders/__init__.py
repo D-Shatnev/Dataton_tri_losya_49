@@ -8,5 +8,6 @@ Encoders map a batch of waveforms with shape (B, T) to embeddings with shape (B,
 """
 
 from dataton_tri_losya_49.pipeline.components.encoders.onnx_encoder import OnnxEncoder
+from dataton_tri_losya_49.pipeline.components.encoders.titanet_encoder import TitaNetEncoder
 
-__all__ = ["OnnxEncoder"]
+__all__ = ["OnnxEncoder", "TitaNetEncoder"]
