@@ -13,6 +13,7 @@ edit only the [encoder] section and re-run.
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 from dataton_tri_losya_49.constants import DEFAULT_BATCH_SIZE
@@ -56,8 +57,16 @@ def main(argv: list[str] | None = None) -> int:
     print(f"\nrun_dir   : {art.run_dir}")
     print(f"embeddings: {art.embeddings_path}")
     print(f"submission: {art.submission_path}")
+    print(f"timing    : {art.timing_path}")
     if art.metrics_path is not None:
         print(f"metrics   : {art.metrics_path}")
+
+    t = json.loads(art.timing_path.read_text(encoding="utf-8"))
+    print(
+        f"\ntiming    : inference={t['inference_time_s']:.3f}s"
+        f"  search={t['search_time_s']:.3f}s"
+        f"  total={t['total_time_s']:.3f}s"
+    )
     return 0
 
 
