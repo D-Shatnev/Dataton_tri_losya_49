@@ -59,7 +59,8 @@ uv run speakerid-experiment --help
   - `config.toml` (копия конфига);
   - `embeddings.npz`;
   - `submission.csv`;
-  - `metrics.json` (если доступны метки).
+  - `timing.json` (всегда: `inference_time_s`, `search_time_s`, `total_time_s`);
+  - `metrics.json` (если доступны метки; содержит также вложенный ключ `"timing"`).
 - При запуске выводятся используемые компоненты (encoder type, indexer, loader, evaluator, providers).
 
 ### Как расширять
