@@ -64,6 +64,7 @@ class EncoderSection:
         type: Encoder type identifier (e.g. "onnx").
             See :func:~dataton_tri_losya_49.pipeline.registry.build_encoder for supported values.
         model_path: Path to the model artifact.
+        save_dir: Directory to load pretrained models in.
         output_name: Output node name used when extracting embeddings.
         providers: ONNX Runtime providers priority list.
             None (default) means auto-detect at runtime:
@@ -71,8 +72,9 @@ class EncoderSection:
     """
 
     type: str
-    model_path: Path
+    model_path: Path | None
     output_name: str = "embeddings"
+    save_dir: Path | None = None
     providers: list[str] | None = None
 
 
@@ -290,8 +292,9 @@ def load_experiment_config(path: Path) -> ExperimentConfig:
         ),
         encoder=EncoderSection(
             type=str(_require(enc_raw, "type", "encoder")),
-            model_path=Path(str(_require(enc_raw, "model_path", "encoder"))),
+            model_path=Path(enc_raw["model_path"]) if "model_path" in enc_raw else None,
             output_name=str(enc_raw.get("output_name", "embeddings")),
+            save_dir=Path(enc_raw["save_dir"]) if "save_dir" in enc_raw else None,
             providers=providers,
         ),
         loader=LoaderSection(

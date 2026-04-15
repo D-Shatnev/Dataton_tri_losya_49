@@ -48,6 +48,7 @@ models/*.pt
 models/*.pth
 models/*.ckpt
 models/*.bin
+models/*/
 
 # Local (machine-specific) experiment configs.
 # Keep reproducible configs in configs/experiments/.

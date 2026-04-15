@@ -39,8 +39,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import onnxruntime as ort
+import torch
 
 from dataton_tri_losya_49.pipeline.components.encoders import OnnxEncoder
+from dataton_tri_losya_49.pipeline.components.encoders import SpeechBrainEncoder
 from dataton_tri_losya_49.pipeline.components.evaluators import PrecisionAtKEvaluator
 from dataton_tri_losya_49.pipeline.components.indexers import FaissInnerProductIndexer
 from dataton_tri_losya_49.pipeline.components.loaders import CsvAudioDatasetLoader, SoundFileWaveformLoader
@@ -59,7 +61,7 @@ from dataton_tri_losya_49.pipeline.utils import resolve_path
 # ---------------------------------------------------------------------------
 
 
-def auto_providers() -> list[str]:
+def onnx_auto_providers() -> list[str]:
     """
     Return an ONNX Runtime providers list based on runtime availability.
 
@@ -77,18 +79,47 @@ def auto_providers() -> list[str]:
     return ["CPUExecutionProvider"]
 
 
-def resolve_providers(providers: list[str] | None) -> list[str]:
+def speechbrain_auto_providers() -> list[str]:
+    """
+    Return a devices list for speechbrain model inference based on machine hardware.
+    possible providers:
+        - 'cuda' if torch.cuda.is_available()
+        - 'mps' if torch.backends.mps.is_available()
+        - 'cpu' - always
+
+    Returns:
+        List of devices strings to run speechbrain model on.
+    """
+    available = []
+    if torch.cuda.is_available():
+        available.append("cuda")
+    if torch.backends.mps.is_available():
+        available.append("mps")
+    available.append("cpu")
+
+    return available
+
+
+def resolve_providers(section_type: str, providers: list[str] | None) -> list[str]:
     """
     Resolve providers list: if None → auto-detect, otherwise use as-is.
 
     Args:
+        section_type: name of some section variant.
         providers: Explicit list or None.
 
     Returns:
         Non-empty providers list.
     """
-    if providers is None:
-        return auto_providers()
+    if section_type == "onnx":
+        if providers is None:
+            return onnx_auto_providers()
+    elif section_type == "speechbrain":
+        if providers is None:
+            return speechbrain_auto_providers()
+    else:
+        raise ValueError(f"Not implemented providers resolve case for {section_type}")
+
     return list(providers)
 
 
@@ -98,7 +129,10 @@ def resolve_providers(providers: list[str] | None) -> list[str]:
 
 
 def build_encoder(
-    section: EncoderSection, providers: list[str] | None = None, model_path_override: Path | None = None
+    section: EncoderSection,
+    providers: list[str] | None = None,
+    model_path_override: Path | None = None,
+    save_dir_override: Path | None = None,
 ) -> Encoder:
     """
     Instantiate an :class:~dataton_tri_losya_49.pipeline.interfaces.Encoder from config section.
@@ -109,6 +143,8 @@ def build_encoder(
             if that is also None, :func:auto_providers is called.
         model_path_override: If given, overrides section.model_path.
             Used by inference CLI so that --model flag wins over TOML default.
+        save_dir_override: If given, overrides section.save_dir.
+            Used by inference CLI so that --save-dir flag wins over TOML default.
 
     Returns:
         Encoder instance matching section.type.
@@ -121,16 +157,22 @@ def build_encoder(
         - "onnx" → :class:~dataton_tri_losya_49.pipeline.components.encoders.OnnxEncoder
     """
     if section.type == "onnx":
-        effective_providers = providers if providers is not None else resolve_providers(section.providers)
+        effective_providers = providers if providers is not None else resolve_providers(section.type, section.providers)
         effective_path = resolve_path(model_path_override if model_path_override is not None else section.model_path)
         return OnnxEncoder(
             model_path=effective_path,
             providers=effective_providers,
             output_name=section.output_name,
         )
+    elif section.type == "speechbrain":
+        effective_providers = providers if providers is not None else resolve_providers(section.type, section.providers)
+        effective_dir = resolve_path(save_dir_override if save_dir_override is not None else section.save_dir)
+        return SpeechBrainEncoder(
+            save_dir=effective_dir, providers=effective_providers, output_name=section.output_name
+        )
 
     raise ValueError(
-        f"Unknown encoder type: {section.type!r}. " "Register a new encoder in pipeline/registry.py :: build_encoder()."
+        f"Unknown encoder type: {section.type!r}. Register a new encoder in pipeline/registry.py :: build_encoder()."
     )
 
 

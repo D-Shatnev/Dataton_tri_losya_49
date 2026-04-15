@@ -35,7 +35,7 @@ from pathlib import Path
 from dataton_tri_losya_49.io import write_submission_csv
 from dataton_tri_losya_49.pipeline.components.loaders import CsvAudioDatasetLoader
 from dataton_tri_losya_49.pipeline.config import load_inference_config
-from dataton_tri_losya_49.pipeline.registry import auto_providers, build_encoder, build_indexer, build_waveform_loader
+from dataton_tri_losya_49.pipeline.registry import build_encoder, build_indexer, build_waveform_loader
 from dataton_tri_losya_49.pipeline.runner import extract_embeddings
 
 # Default config path — stable, can always be overridden via --config
@@ -66,6 +66,13 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help="Override model path from TOML config (e.g. models/my_encoder.onnx)",
+    )
+
+    p.add_argument(
+        "--save_dir",
+        type=Path,
+        default=None,
+        help="Override save_dir path from TOML config (e.g. models/)",
     )
 
     # --- config ---
@@ -112,11 +119,10 @@ def main(argv: list[str] | None = None) -> int:
     batch_size: int = int(args.batch_size) if args.batch_size is not None else cfg.defaults.batch_size
     chunk_seconds: float = float(args.chunk_seconds) if args.chunk_seconds is not None else cfg.defaults.chunk_seconds
 
-    # --- providers: use config if explicit, else auto-detect ---
-    providers = cfg.encoder.providers if cfg.encoder.providers is not None else auto_providers()
-
     # --- build components via registry ---
-    encoder = build_encoder(cfg.encoder, providers=providers, model_path_override=args.model)
+    encoder = build_encoder(
+        cfg.encoder, providers=cfg.encoder.providers, model_path_override=args.model, save_dir_override=args.save_dir
+    )
     indexer = build_indexer(cfg.index)
     waveform_loader = build_waveform_loader(cfg.loader)
 
