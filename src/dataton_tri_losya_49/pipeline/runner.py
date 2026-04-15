@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+from tqdm import tqdm
 
 from dataton_tri_losya_49.io import save_embeddings_npz, write_submission_csv
 from dataton_tri_losya_49.pipeline.config import ExperimentConfig
@@ -141,6 +142,7 @@ def run_experiment(cfg: ExperimentConfig, config_path: Path, batch_size: int = 1
         waveforms=components.dataset.iter_waveforms(),
         encoder=components.encoder,
         batch_size=batch_size,
+        total=len(filepaths),
     )
     inference_time_s = time.perf_counter() - _t0_inference
 
@@ -179,7 +181,12 @@ def run_experiment(cfg: ExperimentConfig, config_path: Path, batch_size: int = 1
     )
 
 
-def extract_embeddings(waveforms: Iterable[np.ndarray], encoder: Encoder, batch_size: int) -> np.ndarray:
+def extract_embeddings(
+    waveforms: Iterable[np.ndarray],
+    encoder: Encoder,
+    batch_size: int,
+    total: int | None = None,
+) -> np.ndarray:
     """
     Extract embeddings for an iterable of waveforms.
 
@@ -190,10 +197,13 @@ def extract_embeddings(waveforms: Iterable[np.ndarray], encoder: Encoder, batch_
         waveforms: Iterable that yields 1-D float32 waveforms.
         encoder: Encoder component.
         batch_size: Number of waveforms per encoder call.
+        total: Total number of waveforms (used for tqdm progress bar).
+            Pass None to show a spinner without percentage.
 
     Returns:
         float32 embeddings array shaped [N, D].
     """
+    waveforms = tqdm(waveforms, total=total, desc="inference", unit="wav", dynamic_ncols=True)
     batch_waves: list[np.ndarray] = []
     outs: list[np.ndarray] = []
 
