@@ -16,7 +16,10 @@ Deterministic chunking is important for reproducible evaluation:
 
 from __future__ import annotations
 
+import itertools
+from collections import deque
 from collections.abc import Iterator, Sequence
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -140,8 +143,50 @@ class CsvAudioDatasetLoader:
     def iter_waveforms(self) -> Iterator[np.ndarray]:
         """Iterate over normalized waveforms (mono, resampled, cropped/padded)."""
         for fp in self._filepaths:
-            wav = self.loader.load(self.root / fp)
-            yield crop_or_pad_repeat_start(wav, self._num_samples)
+            yield self._load_one(fp)
+
+    def iter_waveforms_prefetch(self, num_workers: int = 4) -> Iterator[np.ndarray]:
+        """Iterate over waveforms with parallel file I/O using a thread pool.
+
+        Reads the next ``num_workers * 2`` files in background threads while
+        the current batch is being processed by the encoder. On HDD-backed
+        storage this hides seek latency and can improve throughput 2-4x.
+
+        Args:
+            num_workers: Number of parallel reader threads. A value of 4-8 is
+                recommended for HDD; for SSD 2-4 is usually sufficient.
+
+        Yields:
+            1-D mono waveforms (float32) in the original CSV row order.
+        """
+        prefetch_size = num_workers * 2
+        fps = iter(self._filepaths)
+
+        with ThreadPoolExecutor(max_workers=num_workers) as pool:
+            queue: deque[Future[np.ndarray]] = deque()
+
+            # Pre-fill the queue before yielding anything.
+            for fp in itertools.islice(fps, prefetch_size):
+                queue.append(pool.submit(self._load_one, fp))
+
+            for fp in fps:
+                queue.append(pool.submit(self._load_one, fp))
+                yield queue.popleft().result()
+
+            while queue:
+                yield queue.popleft().result()
+
+    def _load_one(self, fp: str) -> np.ndarray:
+        """Load and normalize a single waveform by relative filepath.
+
+        Args:
+            fp: Relative file path as read from the CSV.
+
+        Returns:
+            Normalized waveform of shape (num_samples,), dtype float32.
+        """
+        wav = self.loader.load(self.root / fp)
+        return crop_or_pad_repeat_start(wav, self._num_samples)
 
     def _make_labels(self, df: pd.DataFrame) -> np.ndarray | None:
         """Build deterministic integer labels from speaker_id_col if present."""

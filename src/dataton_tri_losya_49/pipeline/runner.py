@@ -99,7 +99,12 @@ def write_metrics_json(path: Path, metrics: dict) -> None:
     path.write_text(json.dumps(metrics, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
-def run_experiment(cfg: ExperimentConfig, config_path: Path, batch_size: int = 1) -> RunArtifacts:
+def run_experiment(
+    cfg: ExperimentConfig,
+    config_path: Path,
+    batch_size: int = 1,
+    num_workers: int = 4,
+) -> RunArtifacts:
     """
     Run inference -> neighbors -> (optional) metrics.
 
@@ -115,6 +120,8 @@ def run_experiment(cfg: ExperimentConfig, config_path: Path, batch_size: int = 1
         cfg: Parsed experiment configuration.
         config_path: Path to the original TOML file (will be copied into run_dir).
         batch_size: Encoder batch size used during embedding extraction.
+        num_workers: Number of parallel file-reader threads used by the prefetch
+            loader. Set to 0 to disable prefetching and use sequential I/O.
 
     Returns:
         :class:RunArtifacts with paths to all produced files.
@@ -134,8 +141,13 @@ def run_experiment(cfg: ExperimentConfig, config_path: Path, batch_size: int = 1
     if len(filepaths) < 2:
         raise ValueError(f"Dataset must contain at least 2 items to build a kNN submission (got {len(filepaths)}).")
 
+    if num_workers > 0:
+        raw_waveforms = components.dataset.iter_waveforms_prefetch(num_workers=num_workers)
+    else:
+        raw_waveforms = components.dataset.iter_waveforms()
+
     tracked_waveforms = ProgressTracker(
-        components.dataset.iter_waveforms(),
+        raw_waveforms,
         total=len(filepaths),
         desc="Encoding",
         unit="files",

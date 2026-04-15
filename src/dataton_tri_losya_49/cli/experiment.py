@@ -35,6 +35,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--config", type=Path, required=True, help="Path to experiment TOML config")
     p.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE, help="Encoder batch size")
+    p.add_argument(
+        "--num-workers",
+        type=int,
+        default=4,
+        help="Number of parallel file-reader threads for prefetch I/O. Set 0 to disable.",
+    )
     return p
 
 
@@ -51,7 +57,12 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  evaluator: {cfg.evaluation.type}  ks={cfg.evaluation.ks}")
     print(f"  providers: {'auto' if cfg.encoder.providers is None else cfg.encoder.providers}")
 
-    art = run_experiment(cfg, config_path=args.config, batch_size=int(args.batch_size))
+    art = run_experiment(
+        cfg,
+        config_path=args.config,
+        batch_size=int(args.batch_size),
+        num_workers=int(args.num_workers),
+    )
 
     print(f"\nrun_dir   : {art.run_dir}")
     print(f"embeddings: {art.embeddings_path}")
