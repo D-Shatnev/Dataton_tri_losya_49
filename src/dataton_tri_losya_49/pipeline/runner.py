@@ -102,6 +102,39 @@ def write_metrics_json(path: Path, metrics: dict) -> None:
     path.write_text(json.dumps(metrics, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+def build_timing(dataset: DatasetLoader, inference_time_s: float, search_time_s: float) -> dict:
+    """
+    Build timing dict, optionally including VAD breakdown.
+
+    Reads ``vad_time_s`` from the inner waveform loader if it exposes that
+    attribute (i.e. when :class:`~dataton_tri_losya_49.pipeline.components.loaders.VadWaveformLoader`
+    is used). Falls back to 0.0 so the function is safe for any loader type.
+
+    Args:
+        dataset: Dataset loader instance (may or may not have a ``loader`` attribute).
+        inference_time_s: Total wall-clock time spent in :func:`extract_embeddings`.
+        search_time_s: Wall-clock time spent in the kNN search step.
+
+    Returns:
+        JSON-serialisable timing dict with keys ``inference_time_s``,
+        ``encoder_time_s``, ``search_time_s``, ``total_time_s`` and,
+        when VAD was used, ``vad_time_s``.
+    """
+    _inner_loader = getattr(dataset, "loader", None)
+    vad_time_s: float = getattr(_inner_loader, "vad_time_s", 0.0)
+    encoder_time_s = inference_time_s - vad_time_s
+
+    timing: dict = {
+        "inference_time_s": round(inference_time_s, 6),
+        "encoder_time_s": round(encoder_time_s, 6),
+        "search_time_s": round(search_time_s, 6),
+        "total_time_s": round(inference_time_s + search_time_s, 6),
+    }
+    if vad_time_s > 0.0:
+        timing["vad_time_s"] = round(vad_time_s, 6)
+    return timing
+
+
 def run_experiment(cfg: ExperimentConfig, config_path: Path, batch_size: int = 1) -> RunArtifacts:
     """
     Run inference -> neighbors -> (optional) metrics.
@@ -156,11 +189,7 @@ def run_experiment(cfg: ExperimentConfig, config_path: Path, batch_size: int = 1
     submission_path = run_dir / "submission.csv"
     write_submission_csv(submission_path, filepaths=filepaths, neighbors=neighbors)
 
-    timing: dict = {
-        "inference_time_s": round(inference_time_s, 6),
-        "search_time_s": round(search_time_s, 6),
-        "total_time_s": round(inference_time_s + search_time_s, 6),
-    }
+    timing = build_timing(components.dataset, inference_time_s, search_time_s)
     timing_path = run_dir / "timing.json"
     write_metrics_json(timing_path, timing)
 

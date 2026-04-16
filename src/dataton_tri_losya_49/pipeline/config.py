@@ -82,15 +82,25 @@ class LoaderSection:
     Waveform loader configuration.
 
     Attributes:
-        type: Loader type identifier (e.g. "soundfile").
+        type: Loader type identifier (e.g. "soundfile", "soundfile_vad").
             See :func:~dataton_tri_losya_49.pipeline.registry.build_waveform_loader for supported values.
         target_sr: Target sample rate in Hz. Audio will be resampled if necessary.
         clip: If True, clip waveform values to [-1, 1].
+        vad_model_dir: Path to FireRedVAD model directory. Required when type="soundfile_vad".
+        vad_use_gpu: Whether to run VAD inference on GPU. Only used when type="soundfile_vad".
+        vad_speech_threshold: VAD probability threshold for speech detection.
+            Only used when type="soundfile_vad".
+        vad_min_speech_frame: Minimum consecutive frames to be labelled as speech.
+            Only used when type="soundfile_vad".
     """
 
     type: str = "soundfile"
     target_sr: int = DEFAULT_TARGET_SR
     clip: bool = False
+    vad_model_dir: Path | None = None
+    vad_use_gpu: bool = False
+    vad_speech_threshold: float = 0.4
+    vad_min_speech_frame: int = 20
 
 
 @dataclass(frozen=True)
@@ -298,6 +308,10 @@ def load_experiment_config(path: Path) -> ExperimentConfig:
             type=str(ldr_raw.get("type", "soundfile")),
             target_sr=int(ldr_raw.get("target_sr", DEFAULT_TARGET_SR)),
             clip=bool(ldr_raw.get("clip", False)),
+            vad_model_dir=(Path(str(ldr_raw["vad_model_dir"])) if "vad_model_dir" in ldr_raw else None),
+            vad_use_gpu=bool(ldr_raw.get("vad_use_gpu", False)),
+            vad_speech_threshold=float(ldr_raw.get("vad_speech_threshold", 0.4)),
+            vad_min_speech_frame=int(ldr_raw.get("vad_min_speech_frame", 20)),
         ),
         index=IndexSection(
             topk=int(idx_raw.get("topk", 10)),
@@ -352,6 +366,10 @@ def load_inference_config(path: Path) -> InferenceConfig:
             type=str(ldr_raw.get("type", "soundfile")),
             target_sr=int(ldr_raw.get("target_sr", DEFAULT_TARGET_SR)),
             clip=bool(ldr_raw.get("clip", False)),
+            vad_model_dir=(Path(str(ldr_raw["vad_model_dir"])) if "vad_model_dir" in ldr_raw else None),
+            vad_use_gpu=bool(ldr_raw.get("vad_use_gpu", False)),
+            vad_speech_threshold=float(ldr_raw.get("vad_speech_threshold", 0.4)),
+            vad_min_speech_frame=int(ldr_raw.get("vad_min_speech_frame", 20)),
         ),
         index=IndexSection(
             topk=int(idx_raw.get("topk", 10)),
@@ -406,6 +424,8 @@ def _validate_experiment_config(cfg: ExperimentConfig) -> None:
     if cfg.loader.target_sr <= 0:
         raise ValueError("loader.target_sr must be > 0")
 
+    _validate_loader_vad(cfg.loader)
+
 
 def _validate_inference_config(cfg: InferenceConfig) -> None:
     """Validate inference config invariants."""
@@ -433,3 +453,28 @@ def _validate_inference_config(cfg: InferenceConfig) -> None:
 
     if cfg.defaults.batch_size <= 0:
         raise ValueError("defaults.batch_size must be > 0")
+
+    _validate_loader_vad(cfg.loader)
+
+
+def _validate_loader_vad(loader: LoaderSection) -> None:
+    """Validate VAD-specific loader constraints.
+
+    Args:
+        loader: LoaderSection to validate.
+
+    Raises:
+        ValueError: If loader.type is "soundfile_vad" but vad_model_dir is not set,
+            or if vad_speech_threshold / vad_min_speech_frame are out of range.
+    """
+    if loader.type != "soundfile_vad":
+        return
+
+    if loader.vad_model_dir is None:
+        raise ValueError("loader.vad_model_dir is required when loader.type = 'soundfile_vad'")
+
+    if not 0.0 < loader.vad_speech_threshold < 1.0:
+        raise ValueError("loader.vad_speech_threshold must be in (0, 1)")
+
+    if loader.vad_min_speech_frame <= 0:
+        raise ValueError("loader.vad_min_speech_frame must be > 0")
