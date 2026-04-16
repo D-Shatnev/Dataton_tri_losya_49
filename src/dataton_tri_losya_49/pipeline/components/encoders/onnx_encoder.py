@@ -17,8 +17,8 @@ import numpy as np
 import onnxruntime as ort
 
 from dataton_tri_losya_49.constants import (
-    DEFAULT_ONNX_DIM_PROBE_NUM_SAMPLES,
-    DEFAULT_ONNX_EMBEDDINGS_OUTPUT_NAME,
+    DEFAULT_DIM_PROBE_NUM_SAMPLES,
+    DEFAULT_EMBEDDINGS_OUTPUT_NAME,
 )
 
 
@@ -43,7 +43,7 @@ class OnnxEncoder:
 
     model_path: Path
     providers: list[str]
-    output_name: str = DEFAULT_ONNX_EMBEDDINGS_OUTPUT_NAME
+    output_name: str = DEFAULT_EMBEDDINGS_OUTPUT_NAME
     dim_probe_num_samples: int | None = None
 
     def __post_init__(self) -> None:
@@ -81,7 +81,7 @@ class OnnxEncoder:
             if isinstance(t, int) and t > 0:
                 return int(t)
 
-        return int(DEFAULT_ONNX_DIM_PROBE_NUM_SAMPLES)
+        return int(DEFAULT_DIM_PROBE_NUM_SAMPLES)
 
     @property
     def dim(self) -> int:

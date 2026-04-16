@@ -17,8 +17,7 @@ DEFAULT_CHUNK_SECONDS: float = 6.0
 DEFAULT_TARGET_SR: int = 16_000
 
 # encoders defaults
-DEFAULT_ONNX_EMBEDDINGS_OUTPUT_NAME: str = "embeddings"
-DEFAULT_SPEECHBRAIN_EMBEDDINGS_OUTPUT_NAME: str = "embeddings"
+DEFAULT_EMBEDDINGS_OUTPUT_NAME: str = "embeddings"
 
 # Default encoders Runtime providers priority list used by CLI (can be overridden).
 # Kept as a tuple to prevent accidental mutation.
@@ -26,9 +25,9 @@ DEFAULT_ONNX_PROVIDERS: tuple[str, ...] = (
     "CUDAExecutionProvider",
     "CPUExecutionProvider",
 )
-DEFAULT_SPEECHBRAIN_PROVIDERS: tuple[str, ...] = (
-    "CUDAExecutionProvider",
-    "CPUExecutionProvider",
+DEFAULT_TORCH_PROVIDERS: tuple[str, ...] = (
+    "cuda",
+    "cpu",
 )
 
 # Common CLI defaults
@@ -37,5 +36,4 @@ DEFAULT_BATCH_SIZE: int = 1
 
 # Number of samples used to probe embedding dimensionality when model input length is dynamic.
 # Kept consistent with pipeline defaults.
-DEFAULT_ONNX_DIM_PROBE_NUM_SAMPLES: int = int(DEFAULT_CHUNK_SECONDS * DEFAULT_TARGET_SR)
-DEFAULT_SPEECHBRAIN_DIM_PROBE_NUM_SAMPLES: int = int(DEFAULT_CHUNK_SECONDS * DEFAULT_TARGET_SR)
+DEFAULT_DIM_PROBE_NUM_SAMPLES: int = int(DEFAULT_CHUNK_SECONDS * DEFAULT_TARGET_SR)

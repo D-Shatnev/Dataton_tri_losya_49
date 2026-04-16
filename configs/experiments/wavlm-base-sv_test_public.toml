@@ -1,0 +1,34 @@
+[experiment]
+name    = "wavlm-base-sv_test_public"
+out_dir = "experiments"
+
+[data]
+csv            = "data/test_public.csv"
+root           = "."
+filepath_col   = "filepath"
+speaker_id_col = "speaker_id"
+chunk_seconds  = 6.0
+
+[encoder]
+type        = "wavlm"
+# model name from wavlm family on HF
+model_name = "microsoft/wavlm-base-sv"
+# save_dir is directory to load pretrained microsoft models
+save_dir    = "models/microsoft"
+output_name = "embeddings"
+# providers intentionally absent -> auto-detect at runtime (CUDA if available, else CPU)
+providers = ["cuda:6", "cuda", "cpu"]
+
+[loader]
+type      = "soundfile"
+target_sr = 16000
+clip      = false
+
+[index]
+backend = "faiss_ip"
+topk    = 10
+
+[evaluation]
+type = "precision_at_k"
+ks   = [1, 5, 10]
+# labels_npy = "data/labels.npy"   # optional: external labels if speaker_id absent in CSV

@@ -69,6 +69,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     p.add_argument(
+        "--model_name",
+        type=Path,
+        default=None,
+        help="Override model name from TOML config (e.g. microsoft/wavlm-base-plus-sv)",
+    )
+
+    p.add_argument(
         "--save_dir",
         type=Path,
         default=None,
@@ -121,7 +128,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # --- build components via registry ---
     encoder = build_encoder(
-        cfg.encoder, providers=cfg.encoder.providers, model_path_override=args.model, save_dir_override=args.save_dir
+        cfg.encoder, model_name_override = cfg.encoder.model_name, providers=cfg.encoder.providers, model_path_override=args.model, save_dir_override=args.save_dir
     )
     indexer = build_indexer(cfg.index)
     waveform_loader = build_waveform_loader(cfg.loader)

@@ -43,6 +43,7 @@ import torch
 
 from dataton_tri_losya_49.pipeline.components.encoders import OnnxEncoder
 from dataton_tri_losya_49.pipeline.components.encoders import SpeechBrainEncoder
+from dataton_tri_losya_49.pipeline.components.encoders import WavLMEncoder
 from dataton_tri_losya_49.pipeline.components.evaluators import PrecisionAtKEvaluator
 from dataton_tri_losya_49.pipeline.components.indexers import FaissInnerProductIndexer
 from dataton_tri_losya_49.pipeline.components.loaders import CsvAudioDatasetLoader, SoundFileWaveformLoader
@@ -79,7 +80,7 @@ def onnx_auto_providers() -> list[str]:
     return ["CPUExecutionProvider"]
 
 
-def speechbrain_auto_providers() -> list[str]:
+def torch_auto_providers() -> list[str]:
     """
     Return a devices list for speechbrain model inference based on machine hardware.
     possible providers:
@@ -116,7 +117,10 @@ def resolve_providers(section_type: str, providers: list[str] | None) -> list[st
             return onnx_auto_providers()
     elif section_type == "speechbrain":
         if providers is None:
-            return speechbrain_auto_providers()
+            return torch_auto_providers()
+    elif section_type == "wavlm":
+        if providers is None:
+            return torch_auto_providers()
     else:
         raise ValueError(f"Not implemented providers resolve case for {section_type}")
 
@@ -131,6 +135,7 @@ def resolve_providers(section_type: str, providers: list[str] | None) -> list[st
 def build_encoder(
     section: EncoderSection,
     providers: list[str] | None = None,
+    model_name_override: str | None = None,
     model_path_override: Path | None = None,
     save_dir_override: Path | None = None,
 ) -> Encoder:
@@ -169,6 +174,18 @@ def build_encoder(
         effective_dir = resolve_path(save_dir_override if save_dir_override is not None else section.save_dir)
         return SpeechBrainEncoder(
             save_dir=effective_dir, providers=effective_providers, output_name=section.output_name
+        )
+    elif section.type == "wavlm":
+        effective_providers = providers if providers is not None else resolve_providers(section.type, section.providers)
+        effective_dir = resolve_path(save_dir_override if save_dir_override is not None else section.save_dir)
+        effective_model_name = model_name_override if model_name_override is not None else section.model_name
+        if effective_model_name is None:
+            raise ValueError("For Wavlm encoder it's nesessary to choose model_name")
+        return WavLMEncoder(
+            save_dir=effective_dir, 
+            model_name=effective_model_name,
+            providers=effective_providers, 
+            output_name=section.output_name
         )
 
     raise ValueError(

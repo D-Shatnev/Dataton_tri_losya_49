@@ -15,6 +15,7 @@ dependencies = [
     "scipy>=1.17.1",
     "soundfile==0.12.1",
     "speechbrain==1.1.0",
+    "transformers==5.5.4",
     "tqdm>=4.66"
 ]
 

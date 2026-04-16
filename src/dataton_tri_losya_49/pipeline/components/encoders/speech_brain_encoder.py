@@ -18,8 +18,8 @@ import numpy as np
 from speechbrain.inference import SpeakerRecognition
 
 from dataton_tri_losya_49.constants import (
-    DEFAULT_SPEECHBRAIN_DIM_PROBE_NUM_SAMPLES,
-    DEFAULT_SPEECHBRAIN_EMBEDDINGS_OUTPUT_NAME,
+    DEFAULT_DIM_PROBE_NUM_SAMPLES,
+    DEFAULT_EMBEDDINGS_OUTPUT_NAME,
 )
 
 """
@@ -61,7 +61,7 @@ class SpeechBrainEncoder:
 
     save_dir: Path
     providers: list[str]
-    output_name: str = DEFAULT_SPEECHBRAIN_EMBEDDINGS_OUTPUT_NAME
+    output_name: str = DEFAULT_EMBEDDINGS_OUTPUT_NAME
     dim_probe_num_samples: int | None = None
 
     def __post_init__(self) -> None:
@@ -71,7 +71,7 @@ class SpeechBrainEncoder:
             run_opts={"device": self.providers[0]},
         )
 
-        probe_len = int(DEFAULT_SPEECHBRAIN_DIM_PROBE_NUM_SAMPLES)
+        probe_len = int(DEFAULT_DIM_PROBE_NUM_SAMPLES)
 
         dummy = torch.zeros(1, probe_len)
         with torch.no_grad():
