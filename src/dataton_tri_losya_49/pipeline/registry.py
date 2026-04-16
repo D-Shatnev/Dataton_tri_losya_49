@@ -40,7 +40,7 @@ from pathlib import Path
 
 import onnxruntime as ort
 
-from dataton_tri_losya_49.pipeline.components.encoders import OnnxEncoder
+from dataton_tri_losya_49.pipeline.components.encoders import OnnxEncoder, ReDimNetEncoder
 from dataton_tri_losya_49.pipeline.components.evaluators import PrecisionAtKEvaluator
 from dataton_tri_losya_49.pipeline.components.indexers import FaissInnerProductIndexer
 from dataton_tri_losya_49.pipeline.components.loaders import CsvAudioDatasetLoader, SoundFileWaveformLoader
@@ -127,6 +127,17 @@ def build_encoder(
             model_path=effective_path,
             providers=effective_providers,
             output_name=section.output_name,
+        )
+
+    if section.type == "redimnet":
+        return ReDimNetEncoder(
+            hub_repo=section.hub_repo,
+            model_name=section.model_name,
+            train_type=section.train_type,
+            dataset=section.dataset,
+            device=section.device,
+            embedding_dim=section.embedding_dim,
+            force_reload=section.force_reload,
         )
 
     raise ValueError(

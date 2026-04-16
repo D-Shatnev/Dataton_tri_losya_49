@@ -61,19 +61,36 @@ class EncoderSection:
     Encoder (embedder) configuration.
 
     Attributes:
-        type: Encoder type identifier (e.g. "onnx").
+        type: Encoder type identifier (e.g. "onnx", "redimnet").
             See :func:~dataton_tri_losya_49.pipeline.registry.build_encoder for supported values.
-        model_path: Path to the model artifact.
-        output_name: Output node name used when extracting embeddings.
+        model_path: Path to the model artifact. Required for type="onnx".
+            Leave empty string for hub-based models (e.g. type="redimnet").
+        output_name: Output node name used when extracting embeddings (onnx only).
         providers: ONNX Runtime providers priority list.
             None (default) means auto-detect at runtime:
             CUDA if available, CPU otherwise.
+        hub_repo: torch.hub repository slug (redimnet only).
+        model_name: Model size identifier, e.g. "b6" (redimnet only).
+        train_type: Training regime, e.g. "ft_lm" (redimnet only).
+        dataset: Pretraining dataset, e.g. "vox2" (redimnet only).
+        device: Compute device for torch-based encoders. "auto" selects
+            CUDA when available, else CPU (redimnet only).
+        embedding_dim: Expected embedding dimensionality (redimnet only).
+        force_reload: If True, bypass torch.hub cache (redimnet only).
     """
 
     type: str
-    model_path: Path
+    model_path: Path = Path("")
     output_name: str = "embeddings"
     providers: list[str] | None = None
+    # ReDimNet-specific fields (ignored for type="onnx")
+    hub_repo: str = "IDRnD/ReDimNet"
+    model_name: str = "b6"
+    train_type: str = "ft_lm"
+    dataset: str = "vox2"
+    device: str = "auto"
+    embedding_dim: int = 192
+    force_reload: bool = False
 
 
 @dataclass(frozen=True)
@@ -290,9 +307,16 @@ def load_experiment_config(path: Path) -> ExperimentConfig:
         ),
         encoder=EncoderSection(
             type=str(_require(enc_raw, "type", "encoder")),
-            model_path=Path(str(_require(enc_raw, "model_path", "encoder"))),
+            model_path=Path(str(enc_raw.get("model_path", ""))),
             output_name=str(enc_raw.get("output_name", "embeddings")),
             providers=providers,
+            hub_repo=str(enc_raw.get("hub_repo", "IDRnD/ReDimNet")),
+            model_name=str(enc_raw.get("model_name", "b6")),
+            train_type=str(enc_raw.get("train_type", "ft_lm")),
+            dataset=str(enc_raw.get("dataset", "vox2")),
+            device=str(enc_raw.get("device", "auto")),
+            embedding_dim=int(enc_raw.get("embedding_dim", 192)),
+            force_reload=bool(enc_raw.get("force_reload", False)),
         ),
         loader=LoaderSection(
             type=str(ldr_raw.get("type", "soundfile")),
@@ -344,9 +368,16 @@ def load_inference_config(path: Path) -> InferenceConfig:
     cfg = InferenceConfig(
         encoder=EncoderSection(
             type=str(_require(enc_raw, "type", "encoder")),
-            model_path=Path(str(enc_raw.get("model_path", "models/baseline.onnx"))),
+            model_path=Path(str(enc_raw.get("model_path", ""))),
             output_name=str(enc_raw.get("output_name", "embeddings")),
             providers=providers,
+            hub_repo=str(enc_raw.get("hub_repo", "IDRnD/ReDimNet")),
+            model_name=str(enc_raw.get("model_name", "b6")),
+            train_type=str(enc_raw.get("train_type", "ft_lm")),
+            dataset=str(enc_raw.get("dataset", "vox2")),
+            device=str(enc_raw.get("device", "auto")),
+            embedding_dim=int(enc_raw.get("embedding_dim", 192)),
+            force_reload=bool(enc_raw.get("force_reload", False)),
         ),
         loader=LoaderSection(
             type=str(ldr_raw.get("type", "soundfile")),
@@ -383,6 +414,9 @@ def _validate_experiment_config(cfg: ExperimentConfig) -> None:
     """
     if not str(cfg.encoder.type).strip():
         raise ValueError("encoder.type must be a non-empty string")
+
+    if cfg.encoder.type == "onnx" and not str(cfg.encoder.model_path).strip():
+        raise ValueError("encoder.model_path must be set for type='onnx'")
 
     if not str(cfg.index.backend).strip():
         raise ValueError("index.backend must be a non-empty string")
