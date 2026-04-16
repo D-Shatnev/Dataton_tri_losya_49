@@ -17,3 +17,5 @@
 | 3 | `nvidia/speakerverification_en_titanet_large` | первые 6 сек | Дмитрий, без модификаций | 0.1968 | — | — | — |
 | 4 | `speechbrain/spkrec-ecapa-voxceleb` | первые 6 сек | Дмитрий, без модификаций | 0.5065 | — | — | — |
 | 5 | `speechbrain/spkrec-ecapa-voxceleb` | полное аудио | тестовый пайплайн Кирилла | 0.5312 | — | — | — |
+| 6 | `Wespeaker/wespeaker-voxceleb-resnet293-LM` | первые 6 сек аудио | Дмитрий, без модификаций | 0.5356 | 12951.622564 | 110.889702 | 13062.512267 |
+| 7 | `Wespeaker/wespeaker-voxceleb-resnet34-LM` | первые 6 сек аудио | Дмитрий, без модификаций | 0.5043 | 2176.806689 | 117.40715 | 2294.213839 |
