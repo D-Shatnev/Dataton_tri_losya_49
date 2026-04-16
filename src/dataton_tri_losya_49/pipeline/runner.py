@@ -18,11 +18,13 @@ from __future__ import annotations
 
 import json
 import shutil
+import time
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+from tqdm import tqdm
 
 from dataton_tri_losya_49.io import save_embeddings_npz, write_submission_csv
 from dataton_tri_losya_49.pipeline.config import ExperimentConfig
@@ -41,12 +43,14 @@ class RunArtifacts:
         embeddings_path: .npz file with filepaths and embeddings.
         submission_path: submission.csv compatible with challenge format.
         metrics_path: Optional metrics.json with evaluator outputs.
+        timing_path: timing.json with inference/search/total wall-clock times.
     """
 
     run_dir: Path
     embeddings_path: Path
     submission_path: Path
     metrics_path: Path | None
+    timing_path: Path
 
 
 @dataclass(frozen=True)
@@ -133,23 +137,38 @@ def run_experiment(cfg: ExperimentConfig, config_path: Path, batch_size: int = 1
     if len(filepaths) < 2:
         raise ValueError(f"Dataset must contain at least 2 items to build a kNN submission (got {len(filepaths)}).")
 
+    _t0_inference = time.perf_counter()
     embeddings = extract_embeddings(
         waveforms=components.dataset.iter_waveforms(),
         encoder=components.encoder,
         batch_size=batch_size,
+        total=len(filepaths),
     )
+    inference_time_s = time.perf_counter() - _t0_inference
 
     embeddings_path = run_dir / "embeddings.npz"
     save_embeddings_npz(embeddings_path, filepaths=filepaths, embeddings=embeddings)
 
+    _t0_search = time.perf_counter()
     neighbors = components.indexer.neighbors(embeddings, topk=cfg.index.topk)
+    search_time_s = time.perf_counter() - _t0_search
+
     submission_path = run_dir / "submission.csv"
     write_submission_csv(submission_path, filepaths=filepaths, neighbors=neighbors)
+
+    timing: dict = {
+        "inference_time_s": round(inference_time_s, 6),
+        "search_time_s": round(search_time_s, 6),
+        "total_time_s": round(inference_time_s + search_time_s, 6),
+    }
+    timing_path = run_dir / "timing.json"
+    write_metrics_json(timing_path, timing)
 
     metrics_path: Path | None = None
     labels = load_labels(components.dataset, cfg)
     if labels is not None:
         metrics = components.evaluator.evaluate(neighbors=neighbors, labels=labels, ks=cfg.evaluation.ks)
+        metrics["timing"] = timing
         metrics_path = run_dir / "metrics.json"
         write_metrics_json(metrics_path, metrics)
 
@@ -158,10 +177,16 @@ def run_experiment(cfg: ExperimentConfig, config_path: Path, batch_size: int = 1
         embeddings_path=embeddings_path,
         submission_path=submission_path,
         metrics_path=metrics_path,
+        timing_path=timing_path,
     )
 
 
-def extract_embeddings(waveforms: Iterable[np.ndarray], encoder: Encoder, batch_size: int) -> np.ndarray:
+def extract_embeddings(
+    waveforms: Iterable[np.ndarray],
+    encoder: Encoder,
+    batch_size: int,
+    total: int | None = None,
+) -> np.ndarray:
     """
     Extract embeddings for an iterable of waveforms.
 
@@ -172,10 +197,13 @@ def extract_embeddings(waveforms: Iterable[np.ndarray], encoder: Encoder, batch_
         waveforms: Iterable that yields 1-D float32 waveforms.
         encoder: Encoder component.
         batch_size: Number of waveforms per encoder call.
+        total: Total number of waveforms (used for tqdm progress bar).
+            Pass None to show a spinner without percentage.
 
     Returns:
         float32 embeddings array shaped [N, D].
     """
+    waveforms = tqdm(waveforms, total=total, desc="inference", unit="wav", dynamic_ncols=True)
     batch_waves: list[np.ndarray] = []
     outs: list[np.ndarray] = []
 
