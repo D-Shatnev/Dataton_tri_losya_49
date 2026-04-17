@@ -43,7 +43,11 @@ import onnxruntime as ort
 from dataton_tri_losya_49.pipeline.components.encoders import OnnxEncoder, ReDimNetEncoder
 from dataton_tri_losya_49.pipeline.components.evaluators import PrecisionAtKEvaluator
 from dataton_tri_losya_49.pipeline.components.indexers import FaissInnerProductIndexer
-from dataton_tri_losya_49.pipeline.components.loaders import CsvAudioDatasetLoader, SoundFileWaveformLoader
+from dataton_tri_losya_49.pipeline.components.loaders import (
+    CsvAudioDatasetLoader,
+    SoundFileWaveformLoader,
+    VadWaveformLoader,
+)
 from dataton_tri_losya_49.pipeline.config import (
     DataSection,
     EncoderSection,
@@ -198,6 +202,20 @@ def build_waveform_loader(section: LoaderSection) -> WaveformLoader:
     """
     if section.type == "soundfile":
         return SoundFileWaveformLoader(target_sr=section.target_sr, clip=section.clip)
+
+    if section.type == "soundfile_vad":
+        if section.vad_model_dir is None:
+            raise ValueError(
+                "loader.vad_model_dir is required when loader.type = 'soundfile_vad'"
+            )
+        return VadWaveformLoader(
+            target_sr=section.target_sr,
+            clip=section.clip,
+            vad_model_dir=resolve_path(section.vad_model_dir),
+            vad_use_gpu=section.vad_use_gpu,
+            vad_speech_threshold=section.vad_speech_threshold,
+            vad_min_speech_frame=section.vad_min_speech_frame,
+        )
 
     raise ValueError(
         f"Unknown loader type: {section.type!r}. "

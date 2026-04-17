@@ -15,6 +15,7 @@ dependencies = [
     "scipy>=1.17.1",
     "soundfile==0.12.1",
     "tqdm>=4.66",
+    "fireredvad[gpu]>=0.0.2",
     "torch>=2.0",
     "torchaudio>=2.0",
 ]
