@@ -34,6 +34,7 @@ speakerid-experiment = "dataton_tri_losya_49.cli.experiment:main"
 [project.optional-dependencies]
 dev = ["pylint==4.0.5", "pytest>=8.3", "ruff>=0.9"]
 notebooks = ["nbformat==5.10.4", "plotly==6.7.0"]
+export = ["onnx>=1.16", "onnxconverter-common>=1.14", "onnxscript>=0.1"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
