@@ -42,7 +42,7 @@ import onnxruntime as ort
 
 from dataton_tri_losya_49.pipeline.components.encoders import OnnxEncoder, ReDimNetEncoder
 from dataton_tri_losya_49.pipeline.components.evaluators import PrecisionAtKEvaluator
-from dataton_tri_losya_49.pipeline.components.indexers import FaissInnerProductIndexer
+from dataton_tri_losya_49.pipeline.components.indexers import FaissASNormIndexer, FaissInnerProductIndexer
 from dataton_tri_losya_49.pipeline.components.loaders import (
     CsvAudioDatasetLoader,
     SoundFileWaveformLoader,
@@ -172,6 +172,14 @@ def build_indexer(section: IndexSection) -> Indexer:
     """
     if section.backend == "faiss_ip":
         return FaissInnerProductIndexer()
+
+    if section.backend == "faiss_as_norm":
+        return FaissASNormIndexer(
+            cohort_size=section.cohort_size,
+            top_n=section.top_n,
+            cohort_seed=section.cohort_seed,
+            faiss_candidates=section.faiss_candidates,
+        )
 
     raise ValueError(
         f"Unknown indexer backend: {section.backend!r}. "

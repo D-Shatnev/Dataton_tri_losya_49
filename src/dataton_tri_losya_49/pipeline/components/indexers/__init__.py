@@ -6,8 +6,10 @@ This package contains implementations of dataton_tri_losya_49.pipeline.interface
 
 from __future__ import annotations
 
+from dataton_tri_losya_49.pipeline.components.indexers.faiss_as_norm import FaissASNormIndexer
 from dataton_tri_losya_49.pipeline.components.indexers.faiss_ip import FaissInnerProductIndexer
 
 __all__ = [
+    "FaissASNormIndexer",
     "FaissInnerProductIndexer",
 ]

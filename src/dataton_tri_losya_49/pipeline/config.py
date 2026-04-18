@@ -122,10 +122,30 @@ class LoaderSection:
 
 @dataclass(frozen=True)
 class IndexSection:
-    """Nearest-neighbor index configuration."""
+    """Nearest-neighbor index configuration.
+
+    Attributes:
+        topk: Number of nearest neighbors to return per query.
+        backend: Indexer backend identifier. See
+            :func:~dataton_tri_losya_49.pipeline.registry.build_indexer for supported values.
+        cohort_size: Number of randomly sampled embeddings used as the AS-Norm cohort.
+            Only used when backend is "faiss_as_norm".
+        top_n: Number of top cohort scores used to estimate normalization statistics
+            (mean and std) per item. Must be <= cohort_size.
+            Only used when backend is "faiss_as_norm".
+        cohort_seed: Random seed for cohort sampling. Ensures reproducibility.
+            Only used when backend is "faiss_as_norm".
+        faiss_candidates: Number of candidates retrieved by FAISS before AS-Norm
+            re-ranking. Must be >= topk. Recommended: 5-10x topk.
+            Only used when backend is "faiss_as_norm".
+    """
 
     topk: int = 10
     backend: str = "faiss_ip"
+    cohort_size: int = 1000
+    top_n: int = 200
+    cohort_seed: int = 42
+    faiss_candidates: int = 100
 
 
 # ---------------------------------------------------------------------------
@@ -340,6 +360,10 @@ def load_experiment_config(path: Path) -> ExperimentConfig:
         index=IndexSection(
             topk=int(idx_raw.get("topk", 10)),
             backend=str(idx_raw.get("backend", "faiss_ip")),
+            cohort_size=int(idx_raw.get("cohort_size", 1000)),
+            top_n=int(idx_raw.get("top_n", 200)),
+            cohort_seed=int(idx_raw.get("cohort_seed", 42)),
+            faiss_candidates=int(idx_raw.get("faiss_candidates", 100)),
         ),
         evaluation=EvaluationSection(
             type=str(eval_raw.get("type", "precision_at_k")),
@@ -405,6 +429,10 @@ def load_inference_config(path: Path) -> InferenceConfig:
         index=IndexSection(
             topk=int(idx_raw.get("topk", 10)),
             backend=str(idx_raw.get("backend", "faiss_ip")),
+            cohort_size=int(idx_raw.get("cohort_size", 1000)),
+            top_n=int(idx_raw.get("top_n", 200)),
+            cohort_seed=int(idx_raw.get("cohort_seed", 42)),
+            faiss_candidates=int(idx_raw.get("faiss_candidates", 100)),
         ),
         defaults=InferenceDefaultsSection(
             chunk_seconds=float(def_raw.get("chunk_seconds", DEFAULT_CHUNK_SECONDS)),
