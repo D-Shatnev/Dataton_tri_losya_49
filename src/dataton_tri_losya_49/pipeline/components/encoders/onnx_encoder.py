@@ -14,7 +14,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-import onnxruntime as ort
 
 from dataton_tri_losya_49.constants import (
     DEFAULT_ONNX_DIM_PROBE_NUM_SAMPLES,
@@ -48,6 +47,8 @@ class OnnxEncoder:
 
     def __post_init__(self) -> None:
         """Initializes the ONNX session and infers embedding dimensionality."""
+        import onnxruntime as ort  # noqa: PLC0415
+
         if not self.model_path.exists():
             raise FileNotFoundError(f"ONNX model not found: {self.model_path}")
         self._sess = ort.InferenceSession(str(self.model_path), providers=self.providers)

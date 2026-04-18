@@ -61,17 +61,21 @@ class EncoderSection:
     Encoder (embedder) configuration.
 
     Attributes:
-        type: Encoder type identifier (e.g. "onnx").
+        type: Encoder type identifier (e.g. "onnx", "espnet").
             See :func:~dataton_tri_losya_49.pipeline.registry.build_encoder for supported values.
-        model_path: Path to the model artifact.
-        output_name: Output node name used when extracting embeddings.
+        model_path: Path to the model artifact. Required for type="onnx".
+            For type="espnet" either model_path or model_tag must be set.
+        model_tag: HuggingFace / ESPnet model tag (e.g. "espnet/voxcelebs12_ecapa_wavlm_joint").
+            Used by type="espnet" when loading from a pretrained hub model.
+        output_name: Output node name used when extracting embeddings (ONNX only).
         providers: ONNX Runtime providers priority list.
             None (default) means auto-detect at runtime:
             CUDA if available, CPU otherwise.
     """
 
     type: str
-    model_path: Path
+    model_path: Path | None = None
+    model_tag: str | None = None
     output_name: str = "embeddings"
     providers: list[str] | None = None
 
@@ -290,7 +294,8 @@ def load_experiment_config(path: Path) -> ExperimentConfig:
         ),
         encoder=EncoderSection(
             type=str(_require(enc_raw, "type", "encoder")),
-            model_path=Path(str(_require(enc_raw, "model_path", "encoder"))),
+            model_path=Path(str(enc_raw["model_path"])) if "model_path" in enc_raw else None,
+            model_tag=str(enc_raw["model_tag"]) if "model_tag" in enc_raw else None,
             output_name=str(enc_raw.get("output_name", "embeddings")),
             providers=providers,
         ),
@@ -344,7 +349,8 @@ def load_inference_config(path: Path) -> InferenceConfig:
     cfg = InferenceConfig(
         encoder=EncoderSection(
             type=str(_require(enc_raw, "type", "encoder")),
-            model_path=Path(str(enc_raw.get("model_path", "models/baseline.onnx"))),
+            model_path=Path(str(enc_raw["model_path"])) if "model_path" in enc_raw else None,
+            model_tag=str(enc_raw["model_tag"]) if "model_tag" in enc_raw else None,
             output_name=str(enc_raw.get("output_name", "embeddings")),
             providers=providers,
         ),
@@ -373,6 +379,31 @@ def load_inference_config(path: Path) -> InferenceConfig:
 # ---------------------------------------------------------------------------
 
 
+def _validate_encoder_section(enc: "EncoderSection") -> None:
+    """
+    Validate encoder section invariants shared across config types.
+
+    Args:
+        enc: EncoderSection to validate.
+
+    Raises:
+        ValueError: If encoder configuration is invalid.
+    """
+    if not str(enc.type).strip():
+        raise ValueError("encoder.type must be a non-empty string")
+
+    if enc.providers is not None and len(enc.providers) == 0:
+        raise ValueError("encoder.providers must be non-empty when explicitly specified")
+
+    if enc.type == "onnx":
+        if enc.model_path is None:
+            raise ValueError("encoder.model_path is required for type='onnx'")
+
+    if enc.type == "espnet":
+        if enc.model_tag is None and enc.model_path is None:
+            raise ValueError("encoder: model_tag or model_path is required for type='espnet'")
+
+
 def _validate_experiment_config(cfg: ExperimentConfig) -> None:
     """
     Validate experiment config invariants.
@@ -381,18 +412,13 @@ def _validate_experiment_config(cfg: ExperimentConfig) -> None:
     Encoder type / indexer backend validity is enforced by the registry factories,
     not here - this separation keeps config schema stable.
     """
-    if not str(cfg.encoder.type).strip():
-        raise ValueError("encoder.type must be a non-empty string")
+    _validate_encoder_section(cfg.encoder)
 
     if not str(cfg.index.backend).strip():
         raise ValueError("index.backend must be a non-empty string")
 
     if cfg.index.topk <= 0:
         raise ValueError("index.topk must be > 0")
-
-    # providers: None is valid (auto-detect); if given, must be non-empty
-    if cfg.encoder.providers is not None and len(cfg.encoder.providers) == 0:
-        raise ValueError("encoder.providers must be non-empty when explicitly specified")
 
     if any(k <= 0 for k in cfg.evaluation.ks):
         raise ValueError("evaluation.ks must contain only positive integers")
@@ -409,18 +435,13 @@ def _validate_experiment_config(cfg: ExperimentConfig) -> None:
 
 def _validate_inference_config(cfg: InferenceConfig) -> None:
     """Validate inference config invariants."""
-
-    if not str(cfg.encoder.type).strip():
-        raise ValueError("encoder.type must be a non-empty string")
+    _validate_encoder_section(cfg.encoder)
 
     if not str(cfg.index.backend).strip():
         raise ValueError("index.backend must be a non-empty string")
 
     if cfg.index.topk <= 0:
         raise ValueError("index.topk must be > 0")
-
-    if cfg.encoder.providers is not None and len(cfg.encoder.providers) == 0:
-        raise ValueError("encoder.providers must be non-empty when explicitly specified")
 
     if not str(cfg.loader.type).strip():
         raise ValueError("loader.type must be a non-empty string")

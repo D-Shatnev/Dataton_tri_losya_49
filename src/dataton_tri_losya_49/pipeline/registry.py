@@ -38,9 +38,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import onnxruntime as ort
-
-from dataton_tri_losya_49.pipeline.components.encoders import OnnxEncoder
+from dataton_tri_losya_49.pipeline.components.encoders import EspnetEncoder, OnnxEncoder
 from dataton_tri_losya_49.pipeline.components.evaluators import PrecisionAtKEvaluator
 from dataton_tri_losya_49.pipeline.components.indexers import FaissInnerProductIndexer
 from dataton_tri_losya_49.pipeline.components.loaders import CsvAudioDatasetLoader, SoundFileWaveformLoader
@@ -55,7 +53,7 @@ from dataton_tri_losya_49.pipeline.interfaces import DatasetLoader, Encoder, Eva
 from dataton_tri_losya_49.pipeline.utils import resolve_path
 
 # ---------------------------------------------------------------------------
-# Provider helpers
+# Provider helpers (ONNX Runtime — imported lazily to avoid hard dependency)
 # ---------------------------------------------------------------------------
 
 
@@ -71,6 +69,8 @@ def auto_providers() -> list[str]:
     Returns:
         List of ONNX Runtime provider strings.
     """
+    import onnxruntime as ort  # noqa: PLC0415
+
     available = ort.get_available_providers()
     if "CUDAExecutionProvider" in available:
         return ["CUDAExecutionProvider", "CPUExecutionProvider"]
@@ -105,8 +105,8 @@ def build_encoder(
 
     Args:
         section: EncoderSection dataclass instance.
-        providers: Explicit providers list. If None, section.providers is used;
-            if that is also None, :func:auto_providers is called.
+        providers: Explicit providers list (ONNX only). If None, section.providers
+            is used; if that is also None, :func:auto_providers is called.
         model_path_override: If given, overrides section.model_path.
             Used by inference CLI so that --model flag wins over TOML default.
 
@@ -118,7 +118,8 @@ def build_encoder(
         FileNotFoundError: If the resolved model path does not exist (raised by OnnxEncoder).
 
     Supported types:
-        - "onnx" → :class:~dataton_tri_losya_49.pipeline.components.encoders.OnnxEncoder
+        - "onnx"   → :class:~dataton_tri_losya_49.pipeline.components.encoders.OnnxEncoder
+        - "espnet" → :class:~dataton_tri_losya_49.pipeline.components.encoders.EspnetEncoder
     """
     if section.type == "onnx":
         effective_providers = providers if providers is not None else resolve_providers(section.providers)
@@ -129,8 +130,16 @@ def build_encoder(
             output_name=section.output_name,
         )
 
+    if section.type == "espnet":
+        model_path = model_path_override if model_path_override is not None else section.model_path
+        return EspnetEncoder(
+            model_tag=section.model_tag,
+            model_path=model_path,
+        )
+
     raise ValueError(
-        f"Unknown encoder type: {section.type!r}. " "Register a new encoder in pipeline/registry.py :: build_encoder()."
+        f"Unknown encoder type: {section.type!r}. "
+        "Register a new encoder in pipeline/registry.py :: build_encoder()."
     )
 
 

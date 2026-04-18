@@ -1,8 +1,13 @@
 # ---------------------------------------------------------------------------
 # Stage 1: builder — install Python deps via uv into an isolated venv
 # ---------------------------------------------------------------------------
-# python:3.13-slim has Python 3.13 built-in.
-FROM python:3.13-slim AS builder
+# python:3.11-slim has Python 3.11 built-in.
+# BREAKING: downgraded from python:3.13-slim — ESPnet/PyTorch require Python <=3.11
+#
+# flash-attn is installed from a prebuilt wheel (Dao-AILab GitHub releases)
+# to avoid requiring CUDA toolkit in the builder stage.
+# Wheel is pinned to torch 2.5.1 + CUDA 12.x + Python 3.11 (cp311).
+FROM python:3.11-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
@@ -11,10 +16,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libsndfile1 \
     build-essential \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy uv binary from the official pinned image
-COPY --from=ghcr.io/astral-sh/uv:0.6.14 /uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /build
 
@@ -23,8 +29,15 @@ COPY pyproject.toml uv.lock ./
 
 # Create venv and install all production deps into /opt/venv
 # UV_PROJECT_ENVIRONMENT directs uv sync to install into /opt/venv instead of .venv
-RUN uv venv --python python3.13 /opt/venv \
+RUN uv venv --python python3.11 /opt/venv \
     && UV_PROJECT_ENVIRONMENT=/opt/venv uv sync --frozen --no-dev --no-install-project
+
+# Install flash-attn from prebuilt wheel (torch 2.5.1, CUDA 12.x, Python 3.11).
+# Prebuilt wheels: https://github.com/Dao-AILab/flash-attention/releases
+# Pin: flash_attn-2.8.3+cu12torch2.5cxx11abiFALSE-cp311-cp311-linux_x86_64.whl
+# uv creates venvs without pip by default — use uv pip instead.
+RUN UV_PROJECT_ENVIRONMENT=/opt/venv uv pip install --python /opt/venv/bin/python --no-deps \
+    "https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu12torch2.5cxx11abiFALSE-cp311-cp311-linux_x86_64.whl"
 
 # Copy source and install the project package itself (non-editable, no deps)
 # Done here in builder so we use the correct Python interpreter path
@@ -36,7 +49,7 @@ RUN VIRTUAL_ENV=/opt/venv uv pip install --no-deps --python /opt/venv/bin/python
 # Stage 2: runtime — CUDA + cuDNN9 image, no build tools
 # ---------------------------------------------------------------------------
 # ubuntu22.04 + CUDA 12.6 + cuDNN 9
-# 575.57.08 (CUDA 12.9). onnxruntime-gpu 1.20.2 requires CUDA 12.x + cuDNN 9.
+# onnxruntime-gpu removed; torch uses its own bundled CUDA libs.
 FROM nvcr.io/nvidia/cuda:12.6.3-cudnn-runtime-ubuntu22.04 AS runtime
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -47,10 +60,11 @@ ENV DEBIAN_FRONTEND=noninteractive \
     NVIDIA_DRIVER_CAPABILITIES=compute,utility
 
 # Runtime system deps only:
-#   python3.13        — interpreter (via deadsnakes, available on jammy/22.04)
-#   python3.13-venv   — needed so the venv is usable
+#   python3.11        — interpreter (via deadsnakes, available on jammy/22.04)
+#   python3.11-venv   — needed so the venv is usable
 #   libsndfile1       — soundfile audio backend
-#   libgomp1          — OpenMP (faiss, onnxruntime)
+#   libgomp1          — OpenMP (faiss, torch)
+#   ffmpeg            — torchaudio audio decoding backend
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gpg-agent \
     curl \
@@ -59,10 +73,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && echo "deb https://ppa.launchpadcontent.net/deadsnakes/ppa/ubuntu jammy main" \
     > /etc/apt/sources.list.d/deadsnakes.list \
     && apt-get update && apt-get install -y --no-install-recommends \
-    python3.13 \
-    python3.13-venv \
+    python3.11 \
+    python3.11-venv \
     libsndfile1 \
     libgomp1 \
+    ffmpeg \
     && apt-get purge -y --auto-remove gpg-agent curl \
     && rm -rf /var/lib/apt/lists/*
 
@@ -78,10 +93,10 @@ COPY configs/ ./configs/
 RUN mkdir -p data models experiments
 
 # Patch the venv's python symlink to point to the runtime interpreter
-# (builder used /usr/local/bin/python3.13, runtime has /usr/bin/python3.13)
-RUN ln -sf /usr/bin/python3.13 /opt/venv/bin/python3.13 \
-    && ln -sf /usr/bin/python3.13 /opt/venv/bin/python3 \
-    && ln -sf /usr/bin/python3.13 /opt/venv/bin/python
+# (builder used /usr/local/bin/python3.11, runtime has /usr/bin/python3.11)
+RUN ln -sf /usr/bin/python3.11 /opt/venv/bin/python3.11 \
+    && ln -sf /usr/bin/python3.11 /opt/venv/bin/python3 \
+    && ln -sf /usr/bin/python3.11 /opt/venv/bin/python
 
 # Default: print help. Override command via `docker compose run`.
 CMD ["speakerid-infer", "--help"]
