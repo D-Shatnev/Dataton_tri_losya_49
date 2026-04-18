@@ -77,6 +77,42 @@ class EncoderSection:
 
 
 @dataclass(frozen=True)
+class WeSpeakerEncoderSection:
+    """
+    WeSpeaker ONNX encoder configuration.
+
+    Extends the base encoder contract with Kaldi-compatible FBANK feature
+    extraction parameters required by WeSpeaker models.
+
+    Attributes:
+        type: Always "wespeaker_onnx".
+        model_path: Path to the WeSpeaker ONNX model file.
+        output_name: Name of the ONNX output tensor containing embeddings.
+        providers: ONNX Runtime providers priority list.
+            None (default) means auto-detect at runtime.
+        num_mel_bins: Number of mel filterbank bins (Kaldi default: 80).
+        frame_length_ms: Analysis frame length in milliseconds (Kaldi default: 25.0).
+        frame_shift_ms: Frame shift (hop) in milliseconds (Kaldi default: 10.0).
+        low_freq: Lower frequency cutoff for mel filterbank in Hz (Kaldi default: 20.0).
+        high_freq: Upper frequency cutoff in Hz. 0.0 means Nyquist (sample_rate / 2).
+        apply_cmvn: If True, apply per-utterance cepstral mean-variance normalisation.
+        sample_rate: Expected sample rate of input waveforms in Hz.
+    """
+
+    type: str
+    model_path: Path
+    output_name: str = "embs"
+    providers: list[str] | None = None
+    num_mel_bins: int = 80
+    frame_length_ms: float = 25.0
+    frame_shift_ms: float = 10.0
+    low_freq: float = 20.0
+    high_freq: float = 0.0
+    apply_cmvn: bool = True
+    sample_rate: int = 16000
+
+
+@dataclass(frozen=True)
 class LoaderSection:
     """
     Waveform loader configuration.
@@ -178,7 +214,7 @@ class ExperimentConfig:
 
     experiment: ExperimentSection
     data: DataSection
-    encoder: EncoderSection
+    encoder: EncoderSection | WeSpeakerEncoderSection
     index: IndexSection
     evaluation: EvaluationSection
     loader: LoaderSection = field(default_factory=LoaderSection)
@@ -207,7 +243,7 @@ class InferenceConfig:
         defaults: Non-path inference defaults (chunk_seconds, batch_size, filepath_col).
     """
 
-    encoder: EncoderSection
+    encoder: EncoderSection | WeSpeakerEncoderSection
     index: IndexSection
     loader: LoaderSection
     defaults: InferenceDefaultsSection
@@ -276,6 +312,29 @@ def load_experiment_config(path: Path) -> ExperimentConfig:
     raw_providers = enc_raw.get("providers", None)
     providers: list[str] | None = [str(x) for x in raw_providers] if raw_providers is not None else None
 
+    enc_type = str(_require(enc_raw, "type", "encoder"))
+    if enc_type == "wespeaker_onnx":
+        encoder_section: EncoderSection | WeSpeakerEncoderSection = WeSpeakerEncoderSection(
+            type=enc_type,
+            model_path=Path(str(_require(enc_raw, "model_path", "encoder"))),
+            output_name=str(enc_raw.get("output_name", "embs")),
+            providers=providers,
+            num_mel_bins=int(enc_raw.get("num_mel_bins", 80)),
+            frame_length_ms=float(enc_raw.get("frame_length_ms", 25.0)),
+            frame_shift_ms=float(enc_raw.get("frame_shift_ms", 10.0)),
+            low_freq=float(enc_raw.get("low_freq", 20.0)),
+            high_freq=float(enc_raw.get("high_freq", 0.0)),
+            apply_cmvn=bool(enc_raw.get("apply_cmvn", True)),
+            sample_rate=int(enc_raw.get("sample_rate", DEFAULT_TARGET_SR)),
+        )
+    else:
+        encoder_section = EncoderSection(
+            type=enc_type,
+            model_path=Path(str(_require(enc_raw, "model_path", "encoder"))),
+            output_name=str(enc_raw.get("output_name", "embeddings")),
+            providers=providers,
+        )
+
     cfg = ExperimentConfig(
         experiment=ExperimentSection(
             name=str(_require(exp_raw, "name", "experiment")),
@@ -288,12 +347,7 @@ def load_experiment_config(path: Path) -> ExperimentConfig:
             speaker_id_col=str(data_raw.get("speaker_id_col", DEFAULT_SPEAKER_ID_COL)),
             chunk_seconds=float(data_raw.get("chunk_seconds", DEFAULT_CHUNK_SECONDS)),
         ),
-        encoder=EncoderSection(
-            type=str(_require(enc_raw, "type", "encoder")),
-            model_path=Path(str(_require(enc_raw, "model_path", "encoder"))),
-            output_name=str(enc_raw.get("output_name", "embeddings")),
-            providers=providers,
-        ),
+        encoder=encoder_section,
         loader=LoaderSection(
             type=str(ldr_raw.get("type", "soundfile")),
             target_sr=int(ldr_raw.get("target_sr", DEFAULT_TARGET_SR)),
@@ -341,13 +395,31 @@ def load_inference_config(path: Path) -> InferenceConfig:
     raw_providers = enc_raw.get("providers", None)
     providers: list[str] | None = [str(x) for x in raw_providers] if raw_providers is not None else None
 
-    cfg = InferenceConfig(
-        encoder=EncoderSection(
-            type=str(_require(enc_raw, "type", "encoder")),
+    infer_enc_type = str(_require(enc_raw, "type", "encoder"))
+    if infer_enc_type == "wespeaker_onnx":
+        infer_encoder_section: EncoderSection | WeSpeakerEncoderSection = WeSpeakerEncoderSection(
+            type=infer_enc_type,
+            model_path=Path(str(enc_raw.get("model_path", "models/baseline.onnx"))),
+            output_name=str(enc_raw.get("output_name", "embs")),
+            providers=providers,
+            num_mel_bins=int(enc_raw.get("num_mel_bins", 80)),
+            frame_length_ms=float(enc_raw.get("frame_length_ms", 25.0)),
+            frame_shift_ms=float(enc_raw.get("frame_shift_ms", 10.0)),
+            low_freq=float(enc_raw.get("low_freq", 20.0)),
+            high_freq=float(enc_raw.get("high_freq", 0.0)),
+            apply_cmvn=bool(enc_raw.get("apply_cmvn", True)),
+            sample_rate=int(enc_raw.get("sample_rate", DEFAULT_TARGET_SR)),
+        )
+    else:
+        infer_encoder_section = EncoderSection(
+            type=infer_enc_type,
             model_path=Path(str(enc_raw.get("model_path", "models/baseline.onnx"))),
             output_name=str(enc_raw.get("output_name", "embeddings")),
             providers=providers,
-        ),
+        )
+
+    cfg = InferenceConfig(
+        encoder=infer_encoder_section,
         loader=LoaderSection(
             type=str(ldr_raw.get("type", "soundfile")),
             target_sr=int(ldr_raw.get("target_sr", DEFAULT_TARGET_SR)),
