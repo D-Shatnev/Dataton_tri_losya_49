@@ -15,6 +15,7 @@ dependencies = [
     "scipy>=1.17.1",
     "soundfile==0.12.1",
     "tqdm>=4.66",
+    "av>=17.0.0",
 ]
 
 [project.readme]
