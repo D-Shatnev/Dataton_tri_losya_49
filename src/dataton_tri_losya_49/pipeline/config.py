@@ -61,19 +61,23 @@ class EncoderSection:
     Encoder (embedder) configuration.
 
     Attributes:
-        type: Encoder type identifier (e.g. "onnx").
+        type: Encoder type identifier (e.g. "onnx", "camplusplus").
             See :func:~dataton_tri_losya_49.pipeline.registry.build_encoder for supported values.
-        model_path: Path to the model artifact.
-        output_name: Output node name used when extracting embeddings.
+        model_path: Path to the model artifact. Empty string for hub-based models.
+        output_name: Output node name used when extracting embeddings (ONNX only).
         providers: ONNX Runtime providers priority list.
             None (default) means auto-detect at runtime:
             CUDA if available, CPU otherwise.
+        model_id: Hub model identifier for non-ONNX encoders (e.g. ModelScope model id).
+        device: Compute device for torch-based encoders. "auto" selects CUDA when available.
     """
 
     type: str
-    model_path: Path
+    model_path: Path = Path("")
     output_name: str = "embeddings"
     providers: list[str] | None = None
+    model_id: str = ""
+    device: str = "auto"
 
 
 @dataclass(frozen=True)
@@ -290,9 +294,11 @@ def load_experiment_config(path: Path) -> ExperimentConfig:
         ),
         encoder=EncoderSection(
             type=str(_require(enc_raw, "type", "encoder")),
-            model_path=Path(str(_require(enc_raw, "model_path", "encoder"))),
+            model_path=Path(str(enc_raw.get("model_path", ""))),
             output_name=str(enc_raw.get("output_name", "embeddings")),
             providers=providers,
+            model_id=str(enc_raw.get("model_id", "")),
+            device=str(enc_raw.get("device", "auto")),
         ),
         loader=LoaderSection(
             type=str(ldr_raw.get("type", "soundfile")),
@@ -344,9 +350,11 @@ def load_inference_config(path: Path) -> InferenceConfig:
     cfg = InferenceConfig(
         encoder=EncoderSection(
             type=str(_require(enc_raw, "type", "encoder")),
-            model_path=Path(str(enc_raw.get("model_path", "models/baseline.onnx"))),
+            model_path=Path(str(enc_raw.get("model_path", ""))),
             output_name=str(enc_raw.get("output_name", "embeddings")),
             providers=providers,
+            model_id=str(enc_raw.get("model_id", "")),
+            device=str(enc_raw.get("device", "auto")),
         ),
         loader=LoaderSection(
             type=str(ldr_raw.get("type", "soundfile")),

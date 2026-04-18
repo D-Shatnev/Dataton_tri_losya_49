@@ -40,7 +40,7 @@ from pathlib import Path
 
 import onnxruntime as ort
 
-from dataton_tri_losya_49.pipeline.components.encoders import OnnxEncoder
+from dataton_tri_losya_49.pipeline.components.encoders import CamPlusPlusEncoder, OnnxEncoder
 from dataton_tri_losya_49.pipeline.components.evaluators import PrecisionAtKEvaluator
 from dataton_tri_losya_49.pipeline.components.indexers import FaissInnerProductIndexer
 from dataton_tri_losya_49.pipeline.components.loaders import CsvAudioDatasetLoader, SoundFileWaveformLoader
@@ -119,6 +119,7 @@ def build_encoder(
 
     Supported types:
         - "onnx" → :class:~dataton_tri_losya_49.pipeline.components.encoders.OnnxEncoder
+        - "camplusplus" → :class:~dataton_tri_losya_49.pipeline.components.encoders.CamPlusPlusEncoder
     """
     if section.type == "onnx":
         effective_providers = providers if providers is not None else resolve_providers(section.providers)
@@ -127,6 +128,12 @@ def build_encoder(
             model_path=effective_path,
             providers=effective_providers,
             output_name=section.output_name,
+        )
+
+    if section.type == "camplusplus":
+        return CamPlusPlusEncoder(
+            model_id=section.model_id,
+            device=section.device,
         )
 
     raise ValueError(

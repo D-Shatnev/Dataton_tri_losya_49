@@ -1,0 +1,37 @@
+[experiment]
+name    = "redimnet_b6_vox2_ft_lm"
+out_dir = "experiments"
+
+[data]
+csv            = "data/test_public.csv"
+root           = "data"
+filepath_col   = "filepath"
+speaker_id_col = "speaker_id"
+chunk_seconds  = 6.0
+
+[encoder]
+type       = "redimnet"
+# model_path is not used for hub-based models; left empty
+model_path = ""
+
+hub_repo      = "IDRnD/ReDimNet"
+model_name    = "b6"
+train_type    = "ft_lm"
+dataset       = "vox2"
+device        = "auto"       # "auto" -> CUDA if available, else CPU
+embedding_dim = 192
+force_reload  = false        # set true to bypass torch.hub cache
+
+[loader]
+type      = "soundfile"
+target_sr = 16000
+clip      = false
+
+[index]
+backend = "faiss_ip"
+topk    = 10
+
+[evaluation]
+type = "precision_at_k"
+ks   = [1, 5, 10]
+# labels_npy = "data/labels.npy"   # optional: external labels if speaker_id absent in CSV

@@ -1,0 +1,38 @@
+[experiment]
+name    = "redimnet_b6_vox2_ft_lm_trt_fp16"
+out_dir = "experiments"
+
+[data]
+csv            = "data/test_public.csv"
+root           = "data"
+filepath_col   = "filepath"
+speaker_id_col = "speaker_id"
+chunk_seconds  = 6.0
+
+[encoder]
+type               = "redimnet_trt"
+hub_repo           = "IDRnD/ReDimNet"
+model_name         = "b6"
+train_type         = "ft_lm"
+dataset            = "vox2"
+embedding_dim      = 192
+force_reload       = false
+# TensorRT engine cache: compiled once, reused on subsequent runs.
+trt_cache_dir      = "models/trt_cache"
+trt_fp16           = true
+trt_workspace_size = 1073741824  # 1 GiB
+# Must equal chunk_seconds * target_sr: 6.0 * 16000 = 96000
+trt_num_samples    = 96000
+
+[loader]
+type      = "soundfile"
+target_sr = 16000
+clip      = false
+
+[index]
+backend = "faiss_ip"
+topk    = 10
+
+[evaluation]
+type = "precision_at_k"
+ks   = [1, 5, 10]

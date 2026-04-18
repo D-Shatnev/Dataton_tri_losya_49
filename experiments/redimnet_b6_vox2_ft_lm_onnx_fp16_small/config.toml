@@ -1,0 +1,30 @@
+[experiment]
+name    = "redimnet_b6_vox2_ft_lm_onnx_fp16_small"
+out_dir = "experiments"
+
+[data]
+csv            = "data/test_public_small_fragment.csv"
+root           = "data"
+filepath_col   = "filepath"
+speaker_id_col = "speaker_id"
+chunk_seconds  = 6.0
+
+[encoder]
+type        = "onnx"
+model_path  = "models/redimnet_b6_vox2_ft_lm_fp16.onnx"
+output_name = "embeddings"
+# FP16 model requires CUDA — CPU provider does not support FP16 natively
+providers   = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+
+[loader]
+type      = "soundfile"
+target_sr = 16000
+clip      = false
+
+[index]
+backend = "faiss_ip"
+topk    = 10
+
+[evaluation]
+type = "precision_at_k"
+ks   = [1, 5, 10]

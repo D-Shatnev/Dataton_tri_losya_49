@@ -7,10 +7,14 @@ FROM python:3.13-slim AS builder
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# Build-time system deps: libsndfile1 (soundfile wheel), build tools for C extensions
+# Build-time system deps: libsndfile1 (soundfile wheel), build tools for C extensions,
+# git + git-lfs (modelscope downloads model weights via git-lfs)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libsndfile1 \
     build-essential \
+    git \
+    git-lfs \
+    && git lfs install \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy uv binary from the official pinned image
@@ -51,6 +55,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
 #   python3.13-venv   — needed so the venv is usable
 #   libsndfile1       — soundfile audio backend
 #   libgomp1          — OpenMP (faiss, onnxruntime)
+#   ffmpeg            — audio decoding used by modelscope/torchaudio
+#   git + git-lfs     — modelscope downloads model weights via git-lfs
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gpg-agent \
     curl \
@@ -63,6 +69,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.13-venv \
     libsndfile1 \
     libgomp1 \
+    ffmpeg \
+    git \
+    git-lfs \
+    && git lfs install \
     && apt-get purge -y --auto-remove gpg-agent curl \
     && rm -rf /var/lib/apt/lists/*
 
