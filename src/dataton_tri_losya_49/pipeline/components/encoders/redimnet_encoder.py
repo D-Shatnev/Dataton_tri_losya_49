@@ -65,6 +65,7 @@ class ReDimNetEncoder:
             train_type=self.train_type,
             dataset=self.dataset,
             force_reload=self.force_reload,
+            trust_repo=True,
         )
         self._model = self._model.to(self._device)
         self._model.eval()
