@@ -1,0 +1,33 @@
+[experiment]
+name    = "redimnet_train_subset.csv"
+out_dir = "experiments"
+
+[data]
+csv            = "data/train_subset.csv"
+root           = "data"
+filepath_col   = "filepath"
+speaker_id_col = "speaker_id"
+chunk_seconds  = 6.0
+
+[encoder]
+type          = "redimnet"
+model_path    = ""
+model_name    = "b6"
+train_type    = "ft_lm"
+dataset       = "vox2"
+device        = "auto"
+embedding_dim = 192
+force_reload  = false
+
+[loader]
+type      = "soundfile"
+target_sr = 16000
+clip      = false
+
+[index]
+backend = "faiss_ip"
+topk    = 10
+
+[evaluation]
+type = "precision_at_k"
+ks   = [1, 5, 10]
