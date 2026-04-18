@@ -39,7 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--prefetch",
         type=int,
-        default=2,
+        default=8,
         help="Number of waveforms to prefetch from disk in background (0 = disable)",
     )
     return p

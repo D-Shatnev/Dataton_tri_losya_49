@@ -103,6 +103,7 @@ class EncoderSection:
     chunk_duration_s: float = 0.0
     chunk_overlap_s: float = 0.0
     sample_rate: int = DEFAULT_TARGET_SR
+    max_chunk_batch: int = 32
 
 
 @dataclass(frozen=True)
@@ -375,6 +376,7 @@ def load_experiment_config(path: Path) -> ExperimentConfig:
             chunk_duration_s=float(enc_raw.get("chunk_duration_s", 0.0)),
             chunk_overlap_s=float(enc_raw.get("chunk_overlap_s", 0.0)),
             sample_rate=int(enc_raw.get("sample_rate", DEFAULT_TARGET_SR)),
+            max_chunk_batch=int(enc_raw.get("max_chunk_batch", 32)),
         ),
         loader=LoaderSection(
             type=str(ldr_raw.get("type", "soundfile")),
@@ -447,6 +449,7 @@ def load_inference_config(path: Path) -> InferenceConfig:
             chunk_duration_s=float(enc_raw.get("chunk_duration_s", 0.0)),
             chunk_overlap_s=float(enc_raw.get("chunk_overlap_s", 0.0)),
             sample_rate=int(enc_raw.get("sample_rate", DEFAULT_TARGET_SR)),
+            max_chunk_batch=int(enc_raw.get("max_chunk_batch", 32)),
         ),
         loader=LoaderSection(
             type=str(ldr_raw.get("type", "soundfile")),

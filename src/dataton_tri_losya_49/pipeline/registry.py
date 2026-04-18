@@ -134,14 +134,6 @@ def build_encoder(
             output_name=section.output_name,
         )
     elif section.type == "redimnet":
-        # Compute chunk_samples from chunking config so the warm-up dummy
-        # tensor matches the exact shape that ChunkingEncoder will pass.
-        # Falls back to the encoder default (64000) when chunking is disabled.
-        warmup_chunk_samples = (
-            int(section.chunk_duration_s * section.sample_rate)
-            if section.chunk_duration_s > 0.0
-            else 64000
-        )
         base = ReDimNetEncoder(
             hub_repo=section.hub_repo,
             model_name=section.model_name,
@@ -150,7 +142,6 @@ def build_encoder(
             device=section.device,
             embedding_dim=section.embedding_dim,
             force_reload=section.force_reload,
-            chunk_samples=warmup_chunk_samples,
         )
     else:
         raise ValueError(
@@ -164,6 +155,7 @@ def build_encoder(
             chunk_duration_s=section.chunk_duration_s,
             chunk_overlap_s=section.chunk_overlap_s,
             sample_rate=section.sample_rate,
+            max_chunk_batch=section.max_chunk_batch,
         )
 
     return base

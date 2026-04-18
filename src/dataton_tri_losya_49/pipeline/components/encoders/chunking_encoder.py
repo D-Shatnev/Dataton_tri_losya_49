@@ -5,12 +5,13 @@ This module provides :class:`ChunkingEncoder` — a decorator around any
 :class:`~dataton_tri_losya_49.pipeline.interfaces.Encoder` that:
 
 1. Splits each input waveform into overlapping fixed-size chunks.
-2. Embeds each chunk individually (one encoder call per chunk).
+2. Embeds all chunks in a single batched encoder call (up to ``max_chunk_batch``
+   chunks at a time).
 3. Averages the resulting embeddings (Simple Average Pooling).
 
-Calling the inner encoder with a fixed shape ``[1, chunk_samples]`` per chunk
-ensures compatibility with ``torch.compile(backend="cudagraphs")``, which
-requires stable tensor shapes across calls.
+Batching all chunks of a waveform into a single ``[N, chunk_samples]`` call
+reduces the number of GPU kernel launches from N to 1 per waveform, which is
+the dominant speedup for long audio files.
 """
 
 from __future__ import annotations
@@ -29,10 +30,11 @@ class ChunkingEncoder:
     Wrap any Encoder to embed full waveforms via overlapping chunks + average pooling.
 
     Each waveform is split into overlapping chunks of ``chunk_duration_s`` seconds
-    with a step of ``(chunk_duration_s - chunk_overlap_s)`` seconds.  Every chunk
-    is embedded individually with a ``[1, chunk_samples]`` call to the inner
-    encoder (fixed shape — safe for cudagraphs).  The resulting chunk embeddings
-    are averaged (Simple Average Pooling) to produce one embedding per waveform.
+    with a step of ``(chunk_duration_s - chunk_overlap_s)`` seconds.  All chunks
+    are embedded in a single batched call ``[N, chunk_samples]`` to the inner
+    encoder (or in sub-batches of ``max_chunk_batch`` if N is large).  The
+    resulting chunk embeddings are averaged (Simple Average Pooling) to produce
+    one embedding per waveform.
 
     Args:
         encoder: Any object implementing the Encoder protocol
@@ -43,12 +45,16 @@ class ChunkingEncoder:
         sample_rate: Audio sample rate in Hz used to convert seconds to samples.
             Must match the sample rate of waveforms passed to :meth:`embed`.
             Default: 16000.
+        max_chunk_batch: Maximum number of chunks to pass to the inner encoder
+            in a single call.  Limits peak VRAM usage for very long audio files.
+            Set to 0 to disable the limit (all chunks in one call).  Default: 32.
     """
 
     encoder: Any
     chunk_duration_s: float = 4.0
     chunk_overlap_s: float = 2.0
     sample_rate: int = 16000
+    max_chunk_batch: int = 32
 
     def __post_init__(self) -> None:
         """Validate chunking parameters."""
@@ -60,6 +66,8 @@ class ChunkingEncoder:
             raise ValueError("chunk_overlap_s must be < chunk_duration_s")
         if self.sample_rate <= 0:
             raise ValueError("sample_rate must be > 0")
+        if self.max_chunk_batch < 0:
+            raise ValueError("max_chunk_batch must be >= 0")
 
     @property
     def dim(self) -> int:
@@ -76,8 +84,8 @@ class ChunkingEncoder:
 
         Each waveform in the batch is processed independently:
         1. Split into overlapping chunks of ``chunk_samples`` samples.
-        2. Each chunk is embedded with a single ``[1, chunk_samples]`` call
-           to the inner encoder (fixed shape for cudagraphs stability).
+        2. All chunks are embedded in a single batched ``[N, chunk_samples]``
+           call to the inner encoder (or in sub-batches of ``max_chunk_batch``).
         3. Chunk embeddings are averaged element-wise (Simple Average Pooling).
 
         Args:
@@ -108,12 +116,12 @@ class ChunkingEncoder:
 
     def _embed_chunks(self, chunks: np.ndarray) -> np.ndarray:
         """
-        Embed each chunk individually with a fixed [1, chunk_samples] call.
+        Embed all chunks in a single batched encoder call.
 
-        Calling the inner encoder one chunk at a time keeps the input shape
-        constant across all files and all chunks, which is required for
-        ``torch.compile(backend="cudagraphs")`` to reuse the recorded graph
-        without recompilation.
+        Passes all N chunks as a single ``[N, chunk_samples]`` array to the
+        inner encoder, reducing GPU kernel launches from N to 1.  When
+        ``max_chunk_batch > 0`` and N exceeds it, chunks are split into
+        sub-batches to cap peak VRAM usage.
 
         Args:
             chunks: float32 array shaped [N, chunk_samples].
@@ -121,8 +129,14 @@ class ChunkingEncoder:
         Returns:
             float32 embeddings shaped [N, D].
         """
-        embs: list[np.ndarray] = []
-        for chunk in chunks:
-            emb = self.encoder.embed(chunk[np.newaxis])  # [1, chunk_samples] -> [1, D]
-            embs.append(emb[0])                          # [D]
-        return np.stack(embs, axis=0)                    # [N, D]
+        n = chunks.shape[0]
+        cap = self.max_chunk_batch if self.max_chunk_batch > 0 else n
+
+        if n <= cap:
+            return self.encoder.embed(chunks)  # [N, chunk_samples] -> [N, D]
+
+        # Split into sub-batches to avoid OOM on very long files.
+        parts: list[np.ndarray] = []
+        for start in range(0, n, cap):
+            parts.append(self.encoder.embed(chunks[start : start + cap]))
+        return np.concatenate(parts, axis=0)  # [N, D]

@@ -185,7 +185,7 @@ def run_experiment(
     cfg: ExperimentConfig,
     config_path: Path,
     batch_size: int = 1,
-    prefetch: int = 2,
+    prefetch: int = 8,
 ) -> RunArtifacts:
     """
     Run inference -> neighbors -> (optional) metrics.

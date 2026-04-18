@@ -74,7 +74,7 @@ services:
       CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-}
       EXPERIMENT_CONFIG: ${EXPERIMENT_CONFIG:-configs/experiments/onnx_baseline_test_public.toml}
       BATCH_SIZE: ${BATCH_SIZE:-1}
-      PREFETCH: ${PREFETCH:-2}
+      PREFETCH: ${PREFETCH:-8}
       # Persist inductor compiled kernels across container restarts.
       TORCHINDUCTOR_CACHE_DIR: /root/.cache/torch/inductor
     command:
