@@ -1,0 +1,10 @@
+{
+  "precision@1": 0.9905960096581522,
+  "precision@5": 0.9836446816622187,
+  "precision@10": 0.9762739865294192,
+  "timing": {
+    "inference_time_s": 958.7214,
+    "search_time_s": 1.277439,
+    "total_time_s": 959.998839
+  }
+}
