@@ -7,7 +7,7 @@ that runs FunASR FSMN-VAD on each audio file before returning the waveform.
 
 Processing steps:
     1. Load raw waveform (float32) via the injected ``base_loader``.
-    2. Convert to int16 and pass to FunASR ``AutoModel.generate()`` as a numpy array.
+    2. Pass float32 waveform directly to FunASR ``AutoModel.generate()`` as a numpy array.
     3. Concatenate all detected speech segments into a single waveform.
     4. If no speech is detected, fall back to the original waveform and log a warning.
 
@@ -27,6 +27,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar
+from unittest.mock import patch
 
 import numpy as np
 
@@ -101,9 +102,9 @@ class FunASRVadWaveformLoader:
         Load audio and return speech-only waveform at target_sr.
 
         The file is read once via the base loader. The float32 waveform is
-        converted to int16 and passed to FunASR FSMN-VAD. Detected speech
-        segments (returned as ``[begin_ms, end_ms]`` pairs) are sliced from
-        the original float32 waveform and concatenated.
+        passed directly to FunASR FSMN-VAD (no int16 conversion needed).
+        Detected speech segments (returned as ``[begin_ms, end_ms]`` pairs)
+        are sliced from the original float32 waveform and concatenated.
 
         Args:
             path: Path to an audio file readable by the base loader.
@@ -115,15 +116,18 @@ class FunASRVadWaveformLoader:
         """
         wav = self.base_loader.load(path)
 
-        # FunASR AutoModel.generate() accepts int16 numpy array.
-        wav_int16 = (wav * 32767.0).clip(-32768, 32767).astype(np.int16)
-
         t0 = time.perf_counter()
-        results = self._model.generate(
-            input=wav_int16,
-            input_len=np.array([len(wav_int16)]),
-            disable_pbar=True,
-        )
+        # FunASR AutoModel calls torch.cuda.empty_cache() after each inference,
+        # which conflicts with CUDA Graph captures held by torch.compile()-compiled
+        # encoders running concurrently. Suppress the call to avoid the internal
+        # CUDA allocator assertion failure.
+        import torch  # pylint: disable=import-outside-toplevel
+        with patch.object(torch.cuda, "empty_cache", lambda: None):
+            results = self._model.generate(
+                input=wav,
+                input_len=np.array([len(wav)]),
+                disable_pbar=True,
+            )
         elapsed = time.perf_counter() - t0
         object.__setattr__(self, "_vad_time_s", self._vad_time_s + elapsed)
 
