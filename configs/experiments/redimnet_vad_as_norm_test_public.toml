@@ -1,0 +1,41 @@
+[experiment]
+name    = "redimnet_vad_as_norm_test_public"
+out_dir = "experiments"
+
+[data]
+csv            = "data/test_public.csv"
+root           = "data"
+filepath_col   = "filepath"
+speaker_id_col = "speaker_id"
+chunk_seconds  = 6.0
+
+[encoder]
+type          = "redimnet"
+model_path    = ""
+model_name    = "b6"
+train_type    = "ft_lm"
+dataset       = "vox2"
+device        = "auto"
+embedding_dim = 192
+force_reload  = false
+
+[loader]
+type                 = "soundfile_vad"
+target_sr            = 16000
+clip                 = false
+vad_model_dir        = "models/FireRedVAD/VAD"
+vad_use_gpu          = true
+vad_speech_threshold = 0.4
+vad_min_speech_frame = 20
+
+[index]
+backend          = "faiss_as_norm"
+topk             = 10
+cohort_size      = 1000   # random cohort size for mu/sigma estimation
+top_n            = 200    # top-N cohort scores used for statistics (~20% of cohort_size)
+cohort_seed      = 42     # fixed seed for reproducibility
+faiss_candidates = 100    # FAISS retrieves this many candidates before AS-Norm re-ranking (>= topk)
+
+[evaluation]
+type = "precision_at_k"
+ks   = [1, 5, 10]

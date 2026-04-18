@@ -1,0 +1,35 @@
+[experiment]
+name    = "as_norm_baseline_test_public"
+out_dir = "experiments"
+
+[data]
+csv            = "data/test_public.csv"
+root           = "data"
+filepath_col   = "filepath"
+speaker_id_col = "speaker_id"
+chunk_seconds  = 6.0
+
+[encoder]
+type        = "onnx"
+model_path  = "models/baseline.onnx"
+output_name = "embeddings"
+# providers intentionally absent -> auto-detect at runtime (CUDA if available, else CPU)
+# To pin explicitly:  providers = ["CPUExecutionProvider"]
+
+[loader]
+type      = "soundfile"
+target_sr = 16000
+clip      = false
+
+[index]
+backend          = "faiss_as_norm"
+topk             = 10
+cohort_size      = 1000   # random cohort size for mu/sigma estimation (~515 MB RAM)
+top_n            = 200    # top-N cohort scores used for statistics (~20% of cohort_size)
+cohort_seed      = 42     # fixed seed for reproducibility
+faiss_candidates = 100    # FAISS retrieves this many candidates before AS-Norm re-ranking (>= topk)
+
+[evaluation]
+type = "precision_at_k"
+ks   = [1, 5, 10]
+# labels_npy = "data/labels.npy"   # optional: external labels if speaker_id absent in CSV

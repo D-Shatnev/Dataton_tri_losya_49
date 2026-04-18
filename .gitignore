@@ -35,12 +35,15 @@ venv/
 # Data / artifacts — keep directory structure, ignore actual data files
 /data/*
 !/data/.gitkeep
-# Experiments — keep run results (config, metrics, submission), ignore heavy embeddings
+# Experiments — keep run results (config, metrics), ignore heavy embeddings and submissions.
+# submission.csv files are excluded: they are too large for the repo and carry less
+# value than other experiment artifacts (config, timing, metrics).
 /experiments/*
 !/experiments/.gitkeep
 !/experiments/*/
 /experiments/*/*.npz
 /experiments/*/*.npy
+/experiments/*/submission.csv
 
 # Model artifacts: keep directory, ignore large weights.
 models/*.onnx

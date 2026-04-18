@@ -25,7 +25,7 @@ x-base: &base
   build:
     context: .
     dockerfile: Dockerfile
-  image: speakerid:latest
+  image: speakerid:vad-redimnet-as-norm
   deploy:
     resources:
       reservations:
@@ -36,14 +36,16 @@ x-base: &base
   environment:
     NVIDIA_VISIBLE_DEVICES: all
   volumes:
-    - ./data:/app/data
-    - ./models:/app/models
+    - /mnt/sda/dataton/datasets:/app/data
+    - /mnt/sda/dataton/models:/app/models
     - ./configs:/app/configs
 
 services:
   infer:
     <<: *base
     environment:
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+      CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-}
       CSV_PATH: ${CSV_PATH:-data/test_public.csv}
       OUT_PATH: ${OUT_PATH:-data/submission.csv}
       ROOT_PATH: ${ROOT_PATH:-data}
@@ -59,11 +61,13 @@ services:
   experiment:
     <<: *base
     volumes:
-      - ./data:/app/data
-      - ./models:/app/models
+      - /mnt/sda/dataton/datasets:/app/data
+      - /mnt/sda/dataton/models:/app/models
       - ./configs:/app/configs
       - ./experiments:/app/experiments
     environment:
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+      CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-}
       EXPERIMENT_CONFIG: ${EXPERIMENT_CONFIG:-configs/experiments/onnx_baseline_test_public.toml}
       BATCH_SIZE: ${BATCH_SIZE:-1}
     command:
