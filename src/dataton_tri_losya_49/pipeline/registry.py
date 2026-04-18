@@ -58,6 +58,7 @@ from dataton_tri_losya_49.pipeline.components.evaluators import PrecisionAtKEval
 from dataton_tri_losya_49.pipeline.components.indexers import FaissASNormIndexer, FaissInnerProductIndexer
 from dataton_tri_losya_49.pipeline.components.loaders import (
     CsvAudioDatasetLoader,
+    FunASRVadWaveformLoader,
     PrefetchDatasetLoader,
     SoundFileWaveformLoader,
     TorchAudioWaveformLoader,
@@ -261,6 +262,13 @@ def build_waveform_loader(loader: LoaderSection, vad: VadSection) -> WaveformLoa
             vad_use_gpu=vad.use_gpu,
             vad_speech_threshold=vad.speech_threshold,
             vad_min_speech_frame=vad.min_speech_frame,
+        )
+
+    if vad.type == "funasr_vad":
+        return FunASRVadWaveformLoader(
+            base_loader=base,
+            target_sr=loader.target_sr,
+            use_gpu=vad.use_gpu,
         )
 
     raise ValueError(

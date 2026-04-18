@@ -604,4 +604,7 @@ def _validate_vad_section(vad: VadSection) -> None:
             raise ValueError("vad.min_speech_frame must be > 0")
         return
 
-    raise ValueError(f"Unknown vad.type: {vad.type!r}. Supported: 'none', 'fireredvad'.")
+    if vad.type == "funasr_vad":
+        return
+
+    raise ValueError(f"Unknown vad.type: {vad.type!r}. Supported: 'none', 'fireredvad', 'funasr_vad'.")

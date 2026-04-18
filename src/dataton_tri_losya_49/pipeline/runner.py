@@ -108,7 +108,11 @@ def build_timing(dataset: DatasetLoader, inference_time_s: float, search_time_s:
 
     Reads ``vad_time_s`` from the inner waveform loader if it exposes that
     attribute (i.e. when :class:`~dataton_tri_losya_49.pipeline.components.loaders.VadWaveformLoader`
+    or :class:`~dataton_tri_losya_49.pipeline.components.loaders.FunASRVadWaveformLoader`
     is used). Falls back to 0.0 so the function is safe for any loader type.
+
+    Supports both direct ``CsvAudioDatasetLoader`` (``dataset.loader``) and
+    ``PrefetchDatasetLoader`` wrapping it (``dataset.inner.loader``).
 
     Args:
         dataset: Dataset loader instance (may or may not have a ``loader`` attribute).
@@ -120,7 +124,10 @@ def build_timing(dataset: DatasetLoader, inference_time_s: float, search_time_s:
         ``encoder_time_s``, ``search_time_s``, ``total_time_s`` and,
         when VAD was used, ``vad_time_s``.
     """
-    _inner_loader = getattr(dataset, "loader", None)
+    # Support PrefetchDatasetLoader (dataset.inner.loader) and
+    # CsvAudioDatasetLoader (dataset.loader) transparently.
+    _csv_dataset = getattr(dataset, "inner", dataset)
+    _inner_loader = getattr(_csv_dataset, "loader", None)
     vad_time_s: float = getattr(_inner_loader, "vad_time_s", 0.0)
     encoder_time_s = inference_time_s - vad_time_s
 

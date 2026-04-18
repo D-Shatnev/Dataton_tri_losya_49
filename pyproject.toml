@@ -16,6 +16,7 @@ dependencies = [
     "soundfile==0.12.1",
     "tqdm>=4.66",
     "fireredvad[gpu]>=0.0.2",
+    "funasr>=1.2.0",
     "torch==2.6.0",
     "torchaudio==2.6.0",
     # TorchInductor / torch.compile runtime requirements:
