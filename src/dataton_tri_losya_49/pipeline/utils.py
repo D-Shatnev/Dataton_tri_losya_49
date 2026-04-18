@@ -2,9 +2,71 @@
 
 from __future__ import annotations
 
+import queue
+import threading
+from collections.abc import Callable, Iterator
 from pathlib import Path
+from typing import TypeVar
 
 import numpy as np
+
+_T = TypeVar("_T")
+
+_SENTINEL = object()
+
+
+def prefetch_iter(
+    source: Iterator[_T],
+    load_fn: Callable[[_T], np.ndarray],
+    prefetch: int = 2,
+) -> Iterator[np.ndarray]:
+    """Wrap a source iterator with background prefetching via a thread pool.
+
+    Submits ``prefetch`` items ahead of consumption to a background thread so
+    that disk I/O overlaps with GPU inference.  The ordering of results is
+    preserved — items are yielded in the same order as the source iterator.
+
+    Args:
+        source: Iterator that yields items consumed by ``load_fn`` (e.g. file paths).
+        load_fn: Callable that converts one source item to a waveform array.
+            Called in a background thread; must be thread-safe (soundfile is).
+        prefetch: Number of items to load ahead of the consumer.  Must be >= 1.
+            A value of 2 means one item is being loaded while the previous is
+            being processed.
+
+    Yields:
+        Loaded waveform arrays in source order.
+
+    Raises:
+        ValueError: If prefetch < 1.
+        Exception: Re-raises any exception raised inside the background thread.
+    """
+    if prefetch < 1:
+        raise ValueError("prefetch must be >= 1")
+
+    result_queue: queue.Queue = queue.Queue(maxsize=prefetch)
+
+    def _producer() -> None:
+        try:
+            for item in source:
+                result_queue.put(load_fn(item))
+        except Exception as exc:  # noqa: BLE001
+            result_queue.put(exc)
+        finally:
+            result_queue.put(_SENTINEL)
+
+    thread = threading.Thread(target=_producer, daemon=True)
+    thread.start()
+
+    while True:
+        value = result_queue.get()
+        if value is _SENTINEL:
+            break
+        if isinstance(value, Exception):
+            raise value
+        yield value
+
+    thread.join()
 
 
 def resolve_path(p: Path) -> Path:

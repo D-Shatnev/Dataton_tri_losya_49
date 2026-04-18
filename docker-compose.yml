@@ -70,9 +70,12 @@ services:
       CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-}
       EXPERIMENT_CONFIG: ${EXPERIMENT_CONFIG:-configs/experiments/onnx_baseline_test_public.toml}
       BATCH_SIZE: ${BATCH_SIZE:-1}
+      PREFETCH: ${PREFETCH:-2}
     command:
       - speakerid-experiment
       - --config
       - ${EXPERIMENT_CONFIG:-configs/experiments/onnx_baseline_test_public.toml}
       - --batch-size
       - ${BATCH_SIZE:-1}
+      - --prefetch
+      - ${PREFETCH:-2}

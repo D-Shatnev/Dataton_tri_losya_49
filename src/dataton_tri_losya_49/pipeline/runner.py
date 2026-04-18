@@ -30,7 +30,7 @@ from dataton_tri_losya_49.io import save_embeddings_npz, write_submission_csv
 from dataton_tri_losya_49.pipeline.config import ExperimentConfig
 from dataton_tri_losya_49.pipeline.interfaces import DatasetLoader, Encoder, Evaluator, Indexer
 from dataton_tri_losya_49.pipeline.registry import build_dataset_loader, build_encoder, build_evaluator, build_indexer
-from dataton_tri_losya_49.pipeline.utils import resolve_path
+from dataton_tri_losya_49.pipeline.utils import prefetch_iter, resolve_path
 
 
 @dataclass(frozen=True)
@@ -102,6 +102,52 @@ def write_metrics_json(path: Path, metrics: dict) -> None:
     path.write_text(json.dumps(metrics, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+def _make_waveform_iter(dataset: DatasetLoader, prefetch: int) -> Iterable[np.ndarray]:
+    """Return a waveform iterator, optionally with background prefetching.
+
+    When ``prefetch >= 1``, waveforms are loaded from disk in a background
+    thread so that I/O overlaps with GPU inference.  The dataset loader's
+    ``iter_waveforms`` is split into two stages:
+
+    1. Iterating over file paths (cheap, done in the background thread).
+    2. Calling ``loader.load`` for each path (I/O-bound, done in background).
+
+    When the dataset loader does not expose a ``loader`` attribute (i.e. it
+    does not follow the ``root / filepath → loader.load`` pattern), we fall
+    back to wrapping ``iter_waveforms()`` directly with an identity prefetch,
+    which still provides a read-ahead buffer of ``prefetch`` waveforms.
+
+    Args:
+        dataset: Dataset loader instance.
+        prefetch: Number of waveforms to buffer ahead.  0 disables prefetching.
+
+    Returns:
+        Iterator of float32 waveform arrays.
+    """
+    if prefetch <= 0:
+        return dataset.iter_waveforms()
+
+    inner_loader = getattr(dataset, "loader", None)
+    root = getattr(dataset, "root", None)
+
+    if inner_loader is not None and root is not None and hasattr(inner_loader, "load"):
+        # Preferred path: prefetch at the path→load boundary so I/O runs in
+        # background while the encoder processes the previous waveform.
+        filepaths: Iterable[str] = getattr(dataset, "filepaths", [])
+        return prefetch_iter(
+            source=iter(filepaths),
+            load_fn=lambda fp: inner_loader.load(root / fp),
+            prefetch=prefetch,
+        )
+
+    # Fallback: wrap the existing iterator with a lookahead buffer.
+    return prefetch_iter(
+        source=dataset.iter_waveforms(),
+        load_fn=lambda wav: wav,
+        prefetch=prefetch,
+    )
+
+
 def build_timing(dataset: DatasetLoader, inference_time_s: float, search_time_s: float) -> dict:
     """
     Build timing dict, optionally including VAD breakdown.
@@ -135,7 +181,12 @@ def build_timing(dataset: DatasetLoader, inference_time_s: float, search_time_s:
     return timing
 
 
-def run_experiment(cfg: ExperimentConfig, config_path: Path, batch_size: int = 1) -> RunArtifacts:
+def run_experiment(
+    cfg: ExperimentConfig,
+    config_path: Path,
+    batch_size: int = 1,
+    prefetch: int = 2,
+) -> RunArtifacts:
     """
     Run inference -> neighbors -> (optional) metrics.
 
@@ -151,6 +202,10 @@ def run_experiment(cfg: ExperimentConfig, config_path: Path, batch_size: int = 1
         cfg: Parsed experiment configuration.
         config_path: Path to the original TOML file (will be copied into run_dir).
         batch_size: Encoder batch size used during embedding extraction.
+        prefetch: Number of waveforms to prefetch from disk in a background thread
+            while the encoder processes the current item.  Set to 0 to disable
+            prefetching and fall back to sequential loading (useful for debugging).
+            Default is 2.
 
     Returns:
         :class:RunArtifacts with paths to all produced files.
@@ -170,9 +225,11 @@ def run_experiment(cfg: ExperimentConfig, config_path: Path, batch_size: int = 1
     if len(filepaths) < 2:
         raise ValueError(f"Dataset must contain at least 2 items to build a kNN submission (got {len(filepaths)}).")
 
+    waveforms = _make_waveform_iter(components.dataset, prefetch=prefetch)
+
     _t0_inference = time.perf_counter()
     embeddings = extract_embeddings(
-        waveforms=components.dataset.iter_waveforms(),
+        waveforms=waveforms,
         encoder=components.encoder,
         batch_size=batch_size,
         total=len(filepaths),
