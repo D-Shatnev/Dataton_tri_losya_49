@@ -65,12 +65,18 @@ services:
       - /mnt/sda/dataton/models:/app/models
       - ./configs:/app/configs
       - ./experiments:/app/experiments
+      # Persistent inductor/triton kernel cache — avoids recompilation on every run.
+      # The compiled kernels are tied to the GPU arch and PyTorch version, so the
+      # cache is safe to reuse across runs on the same machine.
+      - inductor_cache:/root/.cache/torch
     environment:
       NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
       CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-}
       EXPERIMENT_CONFIG: ${EXPERIMENT_CONFIG:-configs/experiments/onnx_baseline_test_public.toml}
       BATCH_SIZE: ${BATCH_SIZE:-1}
       PREFETCH: ${PREFETCH:-2}
+      # Persist inductor compiled kernels across container restarts.
+      TORCHINDUCTOR_CACHE_DIR: /root/.cache/torch/inductor
     command:
       - speakerid-experiment
       - --config
@@ -79,3 +85,9 @@ services:
       - ${BATCH_SIZE:-1}
       - --prefetch
       - ${PREFETCH:-2}
+
+volumes:
+  # Named volume for torch.inductor / triton compiled kernel cache.
+  # Persists across container restarts so the model is only compiled once
+  # per GPU architecture + PyTorch version combination.
+  inductor_cache:

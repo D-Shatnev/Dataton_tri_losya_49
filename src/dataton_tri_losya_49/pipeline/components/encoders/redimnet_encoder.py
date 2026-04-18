@@ -27,6 +27,12 @@ class ReDimNetEncoder:
     the inference timer starts in the experiment runner, so model download
     time is not counted as inference time.
 
+    On CUDA the model is compiled with ``torch.compile(mode="reduce-overhead")``,
+    which uses CUDA Graphs to minimise CPU-side kernel-launch overhead.  A
+    warm-up pass with a dummy tensor of the expected shape is performed
+    immediately after compilation so that the first real inference call does
+    not pay the JIT-compilation cost.
+
     Args:
         hub_repo: GitHub repo slug passed to torch.hub.load.
         model_name: ReDimNet size identifier (e.g. "b0" … "b6", "M", "L").
@@ -36,6 +42,11 @@ class ReDimNetEncoder:
         embedding_dim: Expected output embedding dimensionality.
             All published ReDimNet checkpoints output 192-dimensional vectors.
         force_reload: If True, bypass torch.hub cache and re-download weights.
+        chunk_samples: Number of samples per chunk used for warm-up.  Must match
+            the actual chunk length passed to :meth:`embed` so that the compiled
+            CUDA Graph is valid for all subsequent calls.  Defaults to 64000
+            (4 s × 16 kHz — the value used by ChunkingEncoder with the standard
+            config).
 
     Attributes:
         dim: Embedding dimensionality D.
@@ -48,12 +59,13 @@ class ReDimNetEncoder:
     device: str = "auto"
     embedding_dim: int = 192
     force_reload: bool = False
+    chunk_samples: int = 64000
     _model: torch.nn.Module = field(init=False, repr=False)
     _device: torch.device = field(init=False, repr=False)
     _dtype: torch.dtype = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        """Load pretrained model from torch.hub and prepare for inference."""
+        """Load pretrained model from torch.hub, compile, and warm up."""
         device_str = self._resolve_device(self.device)
         self._device = torch.device(device_str)
         self._dtype = torch.float16 if device_str == "cuda" else torch.float32
@@ -69,7 +81,28 @@ class ReDimNetEncoder:
         )
         self._model = self._model.to(self._device)
         self._model.eval()
-        self._model = torch.compile(self._model, backend="cudagraphs")
+
+        if device_str == "cuda":
+            # "reduce-overhead" instructs inductor to use CUDA Graphs, which
+            # eliminates CPU kernel-launch overhead on every forward pass.
+            # Requires fixed input shape — guaranteed by ChunkingEncoder which
+            # always calls embed() with [1, chunk_samples].
+            self._model = torch.compile(self._model, mode="reduce-overhead")
+            self._warmup()
+
+    def _warmup(self) -> None:
+        """Run a few dummy forward passes to trigger JIT compilation.
+
+        torch.compile with mode="reduce-overhead" records a CUDA Graph on the
+        first call and replays it on subsequent calls.  Running warm-up here
+        (at model-load time, before the inference timer starts) ensures that
+        the first real inference call does not pay the compilation cost.
+        """
+        dummy = torch.zeros(1, self.chunk_samples, dtype=self._dtype, device=self._device)
+        with torch.no_grad(), torch.autocast(device_type="cuda", dtype=self._dtype):
+            for _ in range(3):
+                _ = self._model(dummy)
+        torch.cuda.synchronize()
 
     @staticmethod
     def _resolve_device(device: str) -> str:
