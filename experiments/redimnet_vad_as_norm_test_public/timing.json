@@ -1,7 +1,6 @@
 {
-  "inference_time_s": 13211.804867,
-  "encoder_time_s": 8389.125099,
-  "search_time_s": 98.607273,
-  "total_time_s": 13310.412139,
-  "vad_time_s": 4822.679768
+  "inference_time_s": 6687.17042,
+  "encoder_time_s": 6687.17042,
+  "search_time_s": 104.935282,
+  "total_time_s": 6792.105701
 }
