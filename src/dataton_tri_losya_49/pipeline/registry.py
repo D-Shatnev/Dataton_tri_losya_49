@@ -40,11 +40,12 @@ from pathlib import Path
 
 import onnxruntime as ort
 
-from dataton_tri_losya_49.pipeline.components.encoders import OnnxEncoder, ReDimNetEncoder
+from dataton_tri_losya_49.pipeline.components.encoders import ChunkingEncoder, OnnxEncoder, ReDimNetEncoder
 from dataton_tri_losya_49.pipeline.components.evaluators import PrecisionAtKEvaluator
 from dataton_tri_losya_49.pipeline.components.indexers import FaissASNormIndexer, FaissInnerProductIndexer
 from dataton_tri_losya_49.pipeline.components.loaders import (
     CsvAudioDatasetLoader,
+    RawCsvAudioDatasetLoader,
     SoundFileWaveformLoader,
     VadWaveformLoader,
 )
@@ -127,14 +128,13 @@ def build_encoder(
     if section.type == "onnx":
         effective_providers = providers if providers is not None else resolve_providers(section.providers)
         effective_path = resolve_path(model_path_override if model_path_override is not None else section.model_path)
-        return OnnxEncoder(
+        base: Encoder = OnnxEncoder(
             model_path=effective_path,
             providers=effective_providers,
             output_name=section.output_name,
         )
-
-    if section.type == "redimnet":
-        return ReDimNetEncoder(
+    elif section.type == "redimnet":
+        base = ReDimNetEncoder(
             hub_repo=section.hub_repo,
             model_name=section.model_name,
             train_type=section.train_type,
@@ -143,10 +143,21 @@ def build_encoder(
             embedding_dim=section.embedding_dim,
             force_reload=section.force_reload,
         )
+    else:
+        raise ValueError(
+            f"Unknown encoder type: {section.type!r}. "
+            "Register a new encoder in pipeline/registry.py :: build_encoder()."
+        )
 
-    raise ValueError(
-        f"Unknown encoder type: {section.type!r}. " "Register a new encoder in pipeline/registry.py :: build_encoder()."
-    )
+    if section.chunk_duration_s > 0.0:
+        return ChunkingEncoder(
+            encoder=base,
+            chunk_duration_s=section.chunk_duration_s,
+            chunk_overlap_s=section.chunk_overlap_s,
+            sample_rate=section.sample_rate,
+        )
+
+    return base
 
 
 # ---------------------------------------------------------------------------
@@ -273,9 +284,14 @@ def build_dataset_loader(
     """
     Build a :class:~dataton_tri_losya_49.pipeline.interfaces.DatasetLoader.
 
-    Dataset loading is currently always CSV-backed via
-    :class:~dataton_tri_losya_49.pipeline.components.loaders.CsvAudioDatasetLoader.
-    The waveform loader is selected via loader_section.type.
+    Two dataset loader types are supported:
+
+    - ``"csv"`` (default): :class:`~dataton_tri_losya_49.pipeline.components.loaders.CsvAudioDatasetLoader`
+      — applies ``crop_or_pad_repeat_start`` to normalize waveform length.
+    - ``"csv_raw"``: :class:`~dataton_tri_losya_49.pipeline.components.loaders.RawCsvAudioDatasetLoader`
+      — yields raw waveforms without length normalization. Use with :class:`ChunkingEncoder`.
+
+    The waveform loader (soundfile / soundfile_vad) is selected via loader_section.type.
 
     Args:
         data_section: DataSection dataclass (csv / root / filepath_col / etc.).
@@ -283,14 +299,32 @@ def build_dataset_loader(
 
     Returns:
         Configured :class:~dataton_tri_losya_49.pipeline.interfaces.DatasetLoader.
+
+    Raises:
+        ValueError: If data_section.dataset_type is unknown.
     """
     waveform_loader = build_waveform_loader(loader_section)
 
-    return CsvAudioDatasetLoader(
-        csv_path=resolve_path(data_section.csv),
-        root=resolve_path(data_section.root),
-        filepath_col=data_section.filepath_col,
-        speaker_id_col=data_section.speaker_id_col,
-        chunk_seconds=float(data_section.chunk_seconds),
-        loader=waveform_loader,
+    if data_section.dataset_type == "csv_raw":
+        return RawCsvAudioDatasetLoader(
+            csv_path=resolve_path(data_section.csv),
+            root=resolve_path(data_section.root),
+            filepath_col=data_section.filepath_col,
+            speaker_id_col=data_section.speaker_id_col,
+            loader=waveform_loader,
+        )
+
+    if data_section.dataset_type == "csv":
+        return CsvAudioDatasetLoader(
+            csv_path=resolve_path(data_section.csv),
+            root=resolve_path(data_section.root),
+            filepath_col=data_section.filepath_col,
+            speaker_id_col=data_section.speaker_id_col,
+            chunk_seconds=float(data_section.chunk_seconds),
+            loader=waveform_loader,
+        )
+
+    raise ValueError(
+        f"Unknown dataset_type: {data_section.dataset_type!r}. "
+        "Supported values: 'csv', 'csv_raw'."
     )

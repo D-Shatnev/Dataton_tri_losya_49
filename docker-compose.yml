@@ -25,7 +25,7 @@ x-base: &base
   build:
     context: .
     dockerfile: Dockerfile
-  image: speakerid:vad-redimnet-as-norm
+  image: speakerid:chunking_aggregation
   deploy:
     resources:
       reservations:

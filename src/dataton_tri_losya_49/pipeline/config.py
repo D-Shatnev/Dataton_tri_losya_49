@@ -77,6 +77,14 @@ class EncoderSection:
             CUDA when available, else CPU (redimnet only).
         embedding_dim: Expected embedding dimensionality (redimnet only).
         force_reload: If True, bypass torch.hub cache (redimnet only).
+        chunk_duration_s: Chunk length in seconds for ChunkingEncoder.
+            Set to 0.0 (default) to disable chunking and use the encoder directly.
+            When > 0, the encoder is wrapped in ChunkingEncoder automatically.
+        chunk_overlap_s: Overlap between consecutive chunks in seconds.
+            Only used when chunk_duration_s > 0. Must be < chunk_duration_s.
+        sample_rate: Audio sample rate in Hz used by ChunkingEncoder to convert
+            seconds to samples. Must match loader.target_sr.
+            Only used when chunk_duration_s > 0.
     """
 
     type: str
@@ -91,6 +99,10 @@ class EncoderSection:
     device: str = "auto"
     embedding_dim: int = 192
     force_reload: bool = False
+    # Chunking fields (used when chunk_duration_s > 0)
+    chunk_duration_s: float = 0.0
+    chunk_overlap_s: float = 0.0
+    sample_rate: int = DEFAULT_TARGET_SR
 
 
 @dataclass(frozen=True)
@@ -163,13 +175,25 @@ class ExperimentSection:
 
 @dataclass(frozen=True)
 class DataSection:
-    """Input data description (CSV + root directory) and deterministic chunking."""
+    """Input data description (CSV + root directory) and deterministic chunking.
+
+    Attributes:
+        csv: Path to the input CSV file.
+        root: Root directory for resolving relative audio paths.
+        filepath_col: CSV column with relative audio file paths.
+        speaker_id_col: CSV column with speaker ids (optional).
+        chunk_seconds: Fixed chunk length in seconds used by CsvAudioDatasetLoader.
+            Ignored when dataset_type is "csv_raw".
+        dataset_type: Dataset loader type. "csv" (default) applies crop/pad
+            normalization; "csv_raw" yields raw waveforms for ChunkingEncoder.
+    """
 
     csv: Path
     root: Path = Path(".")
     filepath_col: str = DEFAULT_FILEPATH_COL
     speaker_id_col: str = DEFAULT_SPEAKER_ID_COL
     chunk_seconds: float = DEFAULT_CHUNK_SECONDS
+    dataset_type: str = "csv"
 
 
 @dataclass(frozen=True)
@@ -334,6 +358,7 @@ def load_experiment_config(path: Path) -> ExperimentConfig:
             filepath_col=str(data_raw.get("filepath_col", DEFAULT_FILEPATH_COL)),
             speaker_id_col=str(data_raw.get("speaker_id_col", DEFAULT_SPEAKER_ID_COL)),
             chunk_seconds=float(data_raw.get("chunk_seconds", DEFAULT_CHUNK_SECONDS)),
+            dataset_type=str(data_raw.get("dataset_type", "csv")),
         ),
         encoder=EncoderSection(
             type=str(_require(enc_raw, "type", "encoder")),
@@ -347,6 +372,9 @@ def load_experiment_config(path: Path) -> ExperimentConfig:
             device=str(enc_raw.get("device", "auto")),
             embedding_dim=int(enc_raw.get("embedding_dim", 192)),
             force_reload=bool(enc_raw.get("force_reload", False)),
+            chunk_duration_s=float(enc_raw.get("chunk_duration_s", 0.0)),
+            chunk_overlap_s=float(enc_raw.get("chunk_overlap_s", 0.0)),
+            sample_rate=int(enc_raw.get("sample_rate", DEFAULT_TARGET_SR)),
         ),
         loader=LoaderSection(
             type=str(ldr_raw.get("type", "soundfile")),
@@ -416,6 +444,9 @@ def load_inference_config(path: Path) -> InferenceConfig:
             device=str(enc_raw.get("device", "auto")),
             embedding_dim=int(enc_raw.get("embedding_dim", 192)),
             force_reload=bool(enc_raw.get("force_reload", False)),
+            chunk_duration_s=float(enc_raw.get("chunk_duration_s", 0.0)),
+            chunk_overlap_s=float(enc_raw.get("chunk_overlap_s", 0.0)),
+            sample_rate=int(enc_raw.get("sample_rate", DEFAULT_TARGET_SR)),
         ),
         loader=LoaderSection(
             type=str(ldr_raw.get("type", "soundfile")),
@@ -486,6 +517,7 @@ def _validate_experiment_config(cfg: ExperimentConfig) -> None:
     if cfg.loader.target_sr <= 0:
         raise ValueError("loader.target_sr must be > 0")
 
+    _validate_chunking(cfg.encoder)
     _validate_loader_vad(cfg.loader)
 
 
@@ -517,6 +549,31 @@ def _validate_inference_config(cfg: InferenceConfig) -> None:
         raise ValueError("defaults.batch_size must be > 0")
 
     _validate_loader_vad(cfg.loader)
+
+
+def _validate_chunking(encoder: EncoderSection) -> None:
+    """Validate chunking-specific encoder constraints.
+
+    Args:
+        encoder: EncoderSection to validate.
+
+    Raises:
+        ValueError: If chunk_duration_s > 0 but chunking parameters are invalid.
+    """
+    if encoder.chunk_duration_s == 0.0:
+        return
+
+    if encoder.chunk_duration_s < 0:
+        raise ValueError("encoder.chunk_duration_s must be >= 0")
+
+    if encoder.chunk_overlap_s < 0:
+        raise ValueError("encoder.chunk_overlap_s must be >= 0")
+
+    if encoder.chunk_overlap_s >= encoder.chunk_duration_s:
+        raise ValueError("encoder.chunk_overlap_s must be < encoder.chunk_duration_s")
+
+    if encoder.sample_rate <= 0:
+        raise ValueError("encoder.sample_rate must be > 0")
 
 
 def _validate_loader_vad(loader: LoaderSection) -> None:
