@@ -28,7 +28,7 @@ DEFAULT_ONNX_PROVIDERS: tuple[str, ...] = (
 
 # Common CLI defaults
 DEFAULT_TOPK: int = 10
-DEFAULT_BATCH_SIZE: int = 1
+DEFAULT_BATCH_SIZE: int = 32
 
 # Number of samples used to probe embedding dimensionality when model input length is dynamic.
 # Kept consistent with pipeline defaults.

@@ -82,16 +82,14 @@ class ChunkingEncoder:
         """
         Embed a batch of waveforms via chunking and Simple Average Pooling.
 
-        Each waveform in the batch is processed independently:
-        1. Split into overlapping chunks of ``chunk_samples`` samples.
-        2. All chunks are embedded in a single batched ``[N, chunk_samples]``
-           call to the inner encoder (or in sub-batches of ``max_chunk_batch``).
-        3. Chunk embeddings are averaged element-wise (Simple Average Pooling).
+        All waveforms in the batch are chunked and their chunks are concatenated
+        into a single ``[total_chunks, chunk_samples]`` array for a single
+        batched encoder call.  Results are then split back per waveform and
+        averaged (Simple Average Pooling).  This cross-file batching keeps the
+        GPU saturated even when individual files are short.
 
         Args:
             batch_waveforms: float32 array shaped [B, T] at ``sample_rate`` Hz.
-                When called from the standard pipeline with ``batch_size=1``,
-                B=1 and T equals the true waveform length (no zero-padding).
 
         Returns:
             float32 embeddings array shaped [B, D].
@@ -106,22 +104,39 @@ class ChunkingEncoder:
         chunk_samples = int(self.chunk_duration_s * self.sample_rate)
         hop_samples = int((self.chunk_duration_s - self.chunk_overlap_s) * self.sample_rate)
 
-        results: list[np.ndarray] = []
+        # Chunk all waveforms and record per-file chunk counts.
+        all_chunks: list[np.ndarray] = []
+        chunk_counts: list[int] = []
         for wav in x:
-            chunks = chunk_waveform(wav, chunk_samples, hop_samples)  # [N, chunk_samples]
-            chunk_embs = self._embed_chunks(chunks)                    # [N, D]
-            results.append(chunk_embs.mean(axis=0))                    # [D]
+            chunks = chunk_waveform(wav, chunk_samples, hop_samples)  # [N_i, chunk_samples]
+            all_chunks.append(chunks)
+            chunk_counts.append(chunks.shape[0])
+
+        # Single GPU call for all chunks across all waveforms in the batch.
+        combined = np.concatenate(all_chunks, axis=0)  # [sum(N_i), chunk_samples]
+        all_embs = self._embed_chunks(combined)         # [sum(N_i), D]
+
+        # Split back per waveform and average (Simple Average Pooling).
+        results: list[np.ndarray] = []
+        offset = 0
+        for n in chunk_counts:
+            results.append(all_embs[offset : offset + n].mean(axis=0))  # [D]
+            offset += n
 
         return np.stack(results, axis=0)  # [B, D]
 
     def _embed_chunks(self, chunks: np.ndarray) -> np.ndarray:
         """
-        Embed all chunks in a single batched encoder call.
+        Embed all chunks in fixed-size sub-batches.
 
-        Passes all N chunks as a single ``[N, chunk_samples]`` array to the
-        inner encoder, reducing GPU kernel launches from N to 1.  When
-        ``max_chunk_batch > 0`` and N exceeds it, chunks are split into
-        sub-batches to cap peak VRAM usage.
+        When ``max_chunk_batch > 0``, the input is split into sub-batches of
+        exactly ``max_chunk_batch`` rows.  Each sub-batch is zero-padded to
+        ``max_chunk_batch`` so that ``torch.compile`` always receives a tensor
+        of the same shape and never triggers recompilation.  Only the real
+        (non-padding) rows are kept in the output.
+
+        When ``max_chunk_batch == 0``, all chunks are passed in a single call
+        (original behaviour, no padding).
 
         Args:
             chunks: float32 array shaped [N, chunk_samples].
@@ -133,10 +148,21 @@ class ChunkingEncoder:
         cap = self.max_chunk_batch if self.max_chunk_batch > 0 else n
 
         if n <= cap:
-            return self.encoder.embed(chunks)  # [N, chunk_samples] -> [N, D]
+            if n == cap:
+                # Exact fit — no padding needed, stable shape for torch.compile.
+                return self.encoder.embed(chunks)
+            # Pad to cap so torch.compile always sees [cap, chunk_samples].
+            pad = np.zeros((cap - n, chunks.shape[1]), dtype=np.float32)
+            padded = np.concatenate([chunks, pad], axis=0)
+            return self.encoder.embed(padded)[:n]
 
-        # Split into sub-batches to avoid OOM on very long files.
+        # Split into fixed-size sub-batches; last sub-batch is padded to cap.
         parts: list[np.ndarray] = []
         for start in range(0, n, cap):
-            parts.append(self.encoder.embed(chunks[start : start + cap]))
+            sub = chunks[start : start + cap]
+            real = sub.shape[0]
+            if real < cap:
+                pad = np.zeros((cap - real, chunks.shape[1]), dtype=np.float32)
+                sub = np.concatenate([sub, pad], axis=0)
+            parts.append(self.encoder.embed(sub)[:real])
         return np.concatenate(parts, axis=0)  # [N, D]

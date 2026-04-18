@@ -103,7 +103,11 @@ class EncoderSection:
     chunk_duration_s: float = 0.0
     chunk_overlap_s: float = 0.0
     sample_rate: int = DEFAULT_TARGET_SR
-    max_chunk_batch: int = 32
+    max_chunk_batch: int = 0
+    # Upper bound on audio duration used to pre-compute a fixed padded_total so
+    # torch.compile always sees the same tensor shape and never recompiles mid-run.
+    # Set to 0.0 to fall back to the old behaviour (fix size on first batch).
+    max_audio_duration_s: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -377,6 +381,7 @@ def load_experiment_config(path: Path) -> ExperimentConfig:
             chunk_overlap_s=float(enc_raw.get("chunk_overlap_s", 0.0)),
             sample_rate=int(enc_raw.get("sample_rate", DEFAULT_TARGET_SR)),
             max_chunk_batch=int(enc_raw.get("max_chunk_batch", 32)),
+            max_audio_duration_s=float(enc_raw.get("max_audio_duration_s", 0.0)),
         ),
         loader=LoaderSection(
             type=str(ldr_raw.get("type", "soundfile")),
@@ -450,6 +455,7 @@ def load_inference_config(path: Path) -> InferenceConfig:
             chunk_overlap_s=float(enc_raw.get("chunk_overlap_s", 0.0)),
             sample_rate=int(enc_raw.get("sample_rate", DEFAULT_TARGET_SR)),
             max_chunk_batch=int(enc_raw.get("max_chunk_batch", 32)),
+            max_audio_duration_s=float(enc_raw.get("max_audio_duration_s", 0.0)),
         ),
         loader=LoaderSection(
             type=str(ldr_raw.get("type", "soundfile")),

@@ -22,6 +22,7 @@ import time
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 from tqdm import tqdm
@@ -30,7 +31,7 @@ from dataton_tri_losya_49.io import save_embeddings_npz, write_submission_csv
 from dataton_tri_losya_49.pipeline.config import ExperimentConfig
 from dataton_tri_losya_49.pipeline.interfaces import DatasetLoader, Encoder, Evaluator, Indexer
 from dataton_tri_losya_49.pipeline.registry import build_dataset_loader, build_encoder, build_evaluator, build_indexer
-from dataton_tri_losya_49.pipeline.utils import prefetch_iter, resolve_path
+from dataton_tri_losya_49.pipeline.utils import prefetch_chunk_batches, prefetch_iter, resolve_path
 
 
 @dataclass(frozen=True)
@@ -198,20 +199,25 @@ def run_experiment(
     4) Runs kNN retrieval to produce a submission.
     5) Optionally computes metrics if labels are available.
 
+    When the encoder is a :class:`~dataton_tri_losya_49.pipeline.components.encoders.chunking_encoder.ChunkingEncoder`,
+    uses :func:`extract_embeddings_chunked` which pre-chunks waveforms in a
+    background thread and feeds the GPU a continuous stream of chunk batches,
+    keeping GPU utilisation high.  Falls back to :func:`extract_embeddings`
+    for non-chunking encoders.
+
     Args:
         cfg: Parsed experiment configuration.
         config_path: Path to the original TOML file (will be copied into run_dir).
-        batch_size: Encoder batch size used during embedding extraction.
-        prefetch: Number of waveforms to prefetch from disk in a background thread
-            while the encoder processes the current item.  Set to 0 to disable
-            prefetching and fall back to sequential loading (useful for debugging).
-            Default is 2.
+        batch_size: Number of waveforms per GPU batch.  For chunking encoders
+            this controls how many files are chunked together into one GPU call.
+        prefetch: Number of pre-chunked batches to buffer in the background
+            thread.  Set to 0 to disable prefetching (useful for debugging).
+            Default is 8.
 
     Returns:
         :class:RunArtifacts with paths to all produced files.
 
     Notes:
-      - Embeddings are extracted by padding within a batch.
       - Metrics are calculated if labels are available either from CSV
         speaker_id column or from evaluation.labels_npy.
       - Component types are resolved via registry:
@@ -225,15 +231,29 @@ def run_experiment(
     if len(filepaths) < 2:
         raise ValueError(f"Dataset must contain at least 2 items to build a kNN submission (got {len(filepaths)}).")
 
-    waveforms = _make_waveform_iter(components.dataset, prefetch=prefetch)
-
     _t0_inference = time.perf_counter()
-    embeddings = extract_embeddings(
-        waveforms=waveforms,
-        encoder=components.encoder,
-        batch_size=batch_size,
-        total=len(filepaths),
-    )
+
+    from dataton_tri_losya_49.pipeline.components.encoders.chunking_encoder import ChunkingEncoder
+
+    if isinstance(components.encoder, ChunkingEncoder):
+        # Fast path: pre-chunk in background thread, GPU never waits for I/O.
+        waveforms = _make_waveform_iter(components.dataset, prefetch=prefetch)
+        embeddings = extract_embeddings_chunked(
+            waveforms=waveforms,
+            encoder=components.encoder,
+            batch_size=batch_size,
+            prefetch=max(prefetch, 1),
+            total=len(filepaths),
+        )
+    else:
+        waveforms = _make_waveform_iter(components.dataset, prefetch=prefetch)
+        embeddings = extract_embeddings(
+            waveforms=waveforms,
+            encoder=components.encoder,
+            batch_size=batch_size,
+            total=len(filepaths),
+        )
+
     inference_time_s = time.perf_counter() - _t0_inference
 
     embeddings_path = run_dir / "embeddings.npz"
@@ -265,6 +285,80 @@ def run_experiment(
         metrics_path=metrics_path,
         timing_path=timing_path,
     )
+
+
+def extract_embeddings_chunked(
+    waveforms: Iterable[np.ndarray],
+    encoder: Any,
+    batch_size: int,
+    prefetch: int = 4,
+    total: int | None = None,
+) -> np.ndarray:
+    """
+    Extract embeddings using a ChunkingEncoder with background pre-chunking.
+
+    Waveforms are chunked in a background thread via :func:`prefetch_chunk_batches`
+    so that CPU work (I/O + chunking) overlaps with GPU inference.  The GPU
+    receives a continuous stream of pre-chunked batches and is never blocked
+    waiting for the next file to load.
+
+    When ``encoder.encoder`` exposes a ``max_audio_duration_s > 0`` attribute
+    (set via :class:`~dataton_tri_losya_49.pipeline.config.EncoderSection`),
+    the padded tensor height is computed upfront so ``torch.compile`` always
+    sees the same shape and never recompiles mid-run.
+
+    Args:
+        waveforms: Iterable of 1-D float32 waveform arrays (one per file).
+        encoder: A :class:`~dataton_tri_losya_49.pipeline.components.encoders.chunking_encoder.ChunkingEncoder`
+            instance.  Its ``chunk_duration_s``, ``chunk_overlap_s`` and
+            ``sample_rate`` attributes are used to compute chunking parameters.
+        batch_size: Number of waveforms to accumulate per GPU batch.
+        prefetch: Number of pre-chunked batches to buffer in the background
+            thread.  Must be >= 1.
+        total: Total number of waveforms (used for tqdm progress bar).
+
+    Returns:
+        float32 embeddings array shaped [N, D].
+    """
+    chunk_samples = int(encoder.chunk_duration_s * encoder.sample_rate)
+    hop_samples = int((encoder.chunk_duration_s - encoder.chunk_overlap_s) * encoder.sample_rate)
+
+    # Shape stabilisation is handled inside ChunkingEncoder._embed_chunks:
+    # each sub-batch is zero-padded to exactly max_chunk_batch rows so that
+    # torch.compile always sees the same tensor shape.  We therefore pass
+    # padded_total=0 here (no extra padding at the batch level).
+    batches = prefetch_chunk_batches(
+        waveforms=iter(waveforms),
+        chunk_samples=chunk_samples,
+        hop_samples=hop_samples,
+        batch_size=batch_size,
+        prefetch=prefetch,
+        padded_total=0,
+    )
+
+    outs: list[np.ndarray] = []
+    pbar = tqdm(total=total, desc="inference", unit="wav", dynamic_ncols=True)
+
+    for combined_chunks, chunk_counts in batches:
+        # combined_chunks: [total_chunks, chunk_samples].
+        # _embed_chunks splits into sub-batches of max_chunk_batch rows, padding
+        # each to a fixed size so torch.compile always sees the same shape.
+        all_embs = encoder._embed_chunks(combined_chunks)  # [total_chunks, D]
+
+        # Split back per waveform and average.
+        offset = 0
+        for n in chunk_counts:
+            outs.append(all_embs[offset : offset + n].mean(axis=0))
+            offset += n
+
+        pbar.update(len(chunk_counts))
+
+    pbar.close()
+
+    if not outs:
+        return np.empty((0, 0), dtype=np.float32)
+
+    return np.stack(outs, axis=0)
 
 
 def extract_embeddings(

@@ -73,18 +73,20 @@ services:
       NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
       CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-}
       EXPERIMENT_CONFIG: ${EXPERIMENT_CONFIG:-configs/experiments/onnx_baseline_test_public.toml}
-      BATCH_SIZE: ${BATCH_SIZE:-1}
-      PREFETCH: ${PREFETCH:-8}
+      BATCH_SIZE: ${BATCH_SIZE:-32}
+      PREFETCH: ${PREFETCH:-16}
       # Persist inductor compiled kernels across container restarts.
       TORCHINDUCTOR_CACHE_DIR: /root/.cache/torch/inductor
+      # Reduce CUDA allocator fragmentation for large variable-size batches.
+      PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
     command:
       - speakerid-experiment
       - --config
       - ${EXPERIMENT_CONFIG:-configs/experiments/onnx_baseline_test_public.toml}
       - --batch-size
-      - ${BATCH_SIZE:-1}
+      - ${BATCH_SIZE:-32}
       - --prefetch
-      - ${PREFETCH:-2}
+      - ${PREFETCH:-16}
 
 volumes:
   # Named volume for torch.inductor / triton compiled kernel cache.

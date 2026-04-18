@@ -142,6 +142,7 @@ def build_encoder(
             device=section.device,
             embedding_dim=section.embedding_dim,
             force_reload=section.force_reload,
+            max_audio_duration_s=section.max_audio_duration_s,
         )
     else:
         raise ValueError(

@@ -4,7 +4,8 @@ out_dir = "experiments"
 
 [data]
 # dataset_type = "csv_raw" yields raw waveforms; ChunkingEncoder handles segmentation.
-# Run with: speakerid-experiment --config ... --batch-size 1
+# ChunkingEncoder batches chunks from all files in the batch into a single GPU call.
+# Run with: speakerid-experiment --config ... --batch-size 32
 csv            = "data/test_public.csv"
 root           = "data"
 filepath_col   = "filepath"
@@ -22,9 +23,18 @@ device           = "auto"
 embedding_dim    = 192
 force_reload     = false
 # Chunking: 4s chunks with 2s overlap → Simple Average Pooling
-chunk_duration_s = 4.0
-chunk_overlap_s  = 2.0
-sample_rate      = 16000
+chunk_duration_s  = 4.0
+chunk_overlap_s   = 2.0
+sample_rate       = 16000
+# Upper bound on audio duration in the dataset.
+# Used to pre-compute a fixed padded_total so torch.compile always sees the
+# same tensor shape and never recompiles mid-run (eliminates "ryvki").
+# Set to 0.0 to fall back to auto-detect from the first batch.
+max_audio_duration_s = 120.0
+# Maximum number of chunks passed to the GPU in a single call.
+# Limits peak VRAM usage when batch_size * max_chunks_per_file is large.
+# 32 chunks × 64000 samples × float16 ≈ 4 MB — safe for any GPU.
+max_chunk_batch   = 32
 
 [loader]
 type      = "soundfile"

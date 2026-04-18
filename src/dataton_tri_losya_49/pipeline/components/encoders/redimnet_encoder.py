@@ -53,6 +53,10 @@ class ReDimNetEncoder:
     device: str = "auto"
     embedding_dim: int = 192
     force_reload: bool = False
+    # Upper bound on audio duration used by the runner to pre-compute a fixed
+    # padded_total so torch.compile always sees the same tensor shape.
+    # Set to 0.0 to fall back to auto-detect from the first batch.
+    max_audio_duration_s: float = 0.0
     _model: torch.nn.Module = field(init=False, repr=False)
     _device: torch.device = field(init=False, repr=False)
     _dtype: torch.dtype = field(init=False, repr=False)
@@ -83,9 +87,11 @@ class ReDimNetEncoder:
         self._model.eval()
 
         if device_str == "cuda":
-            # dynamic=True generates a single compiled kernel that handles any
-            # batch size N, which is required because ChunkingEncoder passes
-            # all chunks of a file as [N, chunk_samples] and N varies per file.
+            # dynamic=True: generates a single compiled kernel that handles any
+            # batch size N without recompilation.  We intentionally avoid
+            # mode="reduce-overhead" here because that mode enables CUDA Graphs
+            # which pre-allocate memory for the maximum observed tensor shape and
+            # cause OOM when batches are large (e.g. 32 files × 59 chunks each).
             self._model = torch.compile(self._model, dynamic=True)
 
     @staticmethod
