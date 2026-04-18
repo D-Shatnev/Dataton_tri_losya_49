@@ -60,6 +60,7 @@ class ReDimNetEncoder:
         self._device = torch.device(device_str)
         self._dtype = torch.float16 if device_str == "cuda" else torch.float32
 
+        torch.hub.set_dir("/app/models/torch_hub")
         self._model = torch.hub.load(
             self.hub_repo,
             "ReDimNet",
