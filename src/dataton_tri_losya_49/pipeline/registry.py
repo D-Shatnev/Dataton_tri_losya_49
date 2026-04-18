@@ -40,7 +40,7 @@ from pathlib import Path
 
 import onnxruntime as ort
 
-from dataton_tri_losya_49.pipeline.components.encoders import OnnxEncoder
+from dataton_tri_losya_49.pipeline.components.encoders import OnnxEncoder, WeSpeakerOnnxEncoder
 from dataton_tri_losya_49.pipeline.components.evaluators import PrecisionAtKEvaluator
 from dataton_tri_losya_49.pipeline.components.indexers import FaissInnerProductIndexer
 from dataton_tri_losya_49.pipeline.components.loaders import CsvAudioDatasetLoader, SoundFileWaveformLoader
@@ -50,6 +50,7 @@ from dataton_tri_losya_49.pipeline.config import (
     EvaluationSection,
     IndexSection,
     LoaderSection,
+    WeSpeakerEncoderSection,
 )
 from dataton_tri_losya_49.pipeline.interfaces import DatasetLoader, Encoder, Evaluator, Indexer, WaveformLoader
 from dataton_tri_losya_49.pipeline.utils import resolve_path
@@ -127,6 +128,31 @@ def build_encoder(
             model_path=effective_path,
             providers=effective_providers,
             output_name=section.output_name,
+        )
+
+    if section.type == "wespeaker_onnx":
+        if not isinstance(section, WeSpeakerEncoderSection):
+            raise TypeError(
+                "encoder type 'wespeaker_onnx' requires a WeSpeakerEncoderSection config, "
+                f"got {type(section).__name__}."
+            )
+        effective_providers = providers if providers is not None else resolve_providers(section.providers)
+        effective_path = resolve_path(model_path_override if model_path_override is not None else section.model_path)
+        return WeSpeakerOnnxEncoder.from_config(
+            WeSpeakerEncoderSection(
+                type=section.type,
+                model_path=effective_path,
+                output_name=section.output_name,
+                providers=effective_providers,
+                num_mel_bins=section.num_mel_bins,
+                frame_length_ms=section.frame_length_ms,
+                frame_shift_ms=section.frame_shift_ms,
+                low_freq=section.low_freq,
+                high_freq=section.high_freq,
+                apply_cmvn=section.apply_cmvn,
+                sample_rate=section.sample_rate,
+            ),
+            providers=effective_providers,
         )
 
     raise ValueError(
