@@ -19,6 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+import av
 import numpy as np
 import soundfile as sf
 from scipy.signal import resample_poly
@@ -63,7 +64,16 @@ class SoundFileWaveformLoader:
         Raises:
             ValueError: If the audio array has an unexpected number of dimensions.
         """
-        audio, sr = sf.read(path, dtype="float32", always_2d=False)
+        try:
+            audio, sr = sf.read(path, dtype="float32", always_2d=False)
+        except Exception:
+            container = av.open(str(path))
+            stream = container.streams.audio[0]
+            sr = stream.sample_rate
+            frames = [f.to_ndarray() for f in container.decode(stream)]
+            container.close()
+            raw = np.concatenate(frames, axis=-1).astype(np.float32)
+            audio = (raw[0] if raw.ndim == 2 else raw) / 32768.0
 
         # to mono
         if audio.ndim == 2:
