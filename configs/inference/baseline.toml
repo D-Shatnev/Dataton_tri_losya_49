@@ -28,9 +28,10 @@ output_name = "embeddings"
 # providers intentionally absent -> auto-detect at runtime
 
 [loader]
-type      = "soundfile"
-target_sr = 16000
-clip      = false
+type            = "soundfile"
+target_sr       = 16000
+clip            = false
+prefetch_factor = 8
 
 [index]
 backend = "faiss_ip"

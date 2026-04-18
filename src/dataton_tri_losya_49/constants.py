@@ -30,6 +30,9 @@ DEFAULT_ONNX_PROVIDERS: tuple[str, ...] = (
 DEFAULT_TOPK: int = 10
 DEFAULT_BATCH_SIZE: int = 1
 
+# Number of waveforms to prefetch in background threads (0 = disabled).
+DEFAULT_PREFETCH_FACTOR: int = 8
+
 # Number of samples used to probe embedding dimensionality when model input length is dynamic.
 # Kept consistent with pipeline defaults.
 DEFAULT_ONNX_DIM_PROBE_NUM_SAMPLES: int = int(DEFAULT_CHUNK_SECONDS * DEFAULT_TARGET_SR)

@@ -18,6 +18,13 @@ dependencies = [
     "fireredvad[gpu]>=0.0.2",
     "torch>=2.0",
     "torchaudio>=2.0",
+    # TorchInductor / torch.compile runtime requirements:
+    #   ninja     — parallel C++/Triton kernel compilation (significantly faster than make)
+    #   setuptools — required to build generated C++ extensions at runtime
+    #   psutil    — helps Inductor tune thread counts for the current machine
+    "ninja>=1.11",
+    "setuptools>=70",
+    "psutil>=5.9",
 ]
 
 [project.readme]

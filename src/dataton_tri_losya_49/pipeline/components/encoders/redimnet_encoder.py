@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 import numpy as np
 import torch
 
+from dataton_tri_losya_49.constants import DEFAULT_CHUNK_SECONDS, DEFAULT_TARGET_SR
+
 
 @dataclass
 class ReDimNetEncoder:
@@ -69,7 +71,21 @@ class ReDimNetEncoder:
         )
         self._model = self._model.to(self._device)
         self._model.eval()
-        self._model = torch.compile(self._model, backend="cudagraphs")
+        self._model = torch.compile(self._model, backend="inductor", mode="reduce-overhead")
+        self._warmup()
+
+    def _warmup(self) -> None:
+        """Run dummy forward passes to trigger JIT compilation.
+
+        Inductor compiles the model on the first forward pass.  Running a few
+        dummy passes here ensures compilation happens during initialisation
+        (before the inference timer starts) rather than on the first real batch.
+        """
+        num_samples = int(DEFAULT_CHUNK_SECONDS * DEFAULT_TARGET_SR)
+        dummy = torch.zeros(1, num_samples, dtype=self._dtype, device=self._device)
+        with torch.no_grad():
+            for _ in range(3):
+                self._model(dummy)
 
     @staticmethod
     def _resolve_device(device: str) -> str:

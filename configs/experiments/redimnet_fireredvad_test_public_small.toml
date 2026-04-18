@@ -27,6 +27,7 @@ vad_model_dir        = "models/FireRedVAD/VAD"
 vad_use_gpu          = true
 vad_speech_threshold = 0.4
 vad_min_speech_frame = 20
+prefetch_factor      = 8
 
 [index]
 backend = "faiss_ip"

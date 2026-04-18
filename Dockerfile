@@ -46,11 +46,14 @@ ENV DEBIAN_FRONTEND=noninteractive \
     NVIDIA_VISIBLE_DEVICES=all \
     NVIDIA_DRIVER_CAPABILITIES=compute,utility
 
-# Runtime system deps only:
+# Runtime system deps:
 #   python3.13        — interpreter (via deadsnakes, available on jammy/22.04)
 #   python3.13-venv   — needed so the venv is usable
+#   python3.13-dev    — Python headers required by setuptools / Inductor C++ extensions
 #   libsndfile1       — soundfile audio backend
 #   libgomp1          — OpenMP (faiss, onnxruntime)
+#   gcc g++           — C/C++17 compiler required by Triton and TorchInductor to
+#                       JIT-compile generated C++ and CUDA kernels at runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gpg-agent \
     curl \
@@ -61,8 +64,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get update && apt-get install -y --no-install-recommends \
     python3.13 \
     python3.13-venv \
+    python3.13-dev \
     libsndfile1 \
     libgomp1 \
+    gcc \
+    g++ \
     && apt-get purge -y --auto-remove gpg-agent curl \
     && rm -rf /var/lib/apt/lists/*
 

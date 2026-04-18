@@ -46,6 +46,7 @@ from dataton_tri_losya_49.constants import (
     DEFAULT_BATCH_SIZE,
     DEFAULT_CHUNK_SECONDS,
     DEFAULT_FILEPATH_COL,
+    DEFAULT_PREFETCH_FACTOR,
     DEFAULT_SPEAKER_ID_COL,
     DEFAULT_TARGET_SR,
 )
@@ -118,6 +119,7 @@ class LoaderSection:
     vad_use_gpu: bool = False
     vad_speech_threshold: float = 0.4
     vad_min_speech_frame: int = 20
+    prefetch_factor: int = DEFAULT_PREFETCH_FACTOR
 
 
 @dataclass(frozen=True)
@@ -356,6 +358,7 @@ def load_experiment_config(path: Path) -> ExperimentConfig:
             vad_use_gpu=bool(ldr_raw.get("vad_use_gpu", False)),
             vad_speech_threshold=float(ldr_raw.get("vad_speech_threshold", 0.4)),
             vad_min_speech_frame=int(ldr_raw.get("vad_min_speech_frame", 20)),
+            prefetch_factor=int(ldr_raw.get("prefetch_factor", DEFAULT_PREFETCH_FACTOR)),
         ),
         index=IndexSection(
             topk=int(idx_raw.get("topk", 10)),
@@ -425,6 +428,7 @@ def load_inference_config(path: Path) -> InferenceConfig:
             vad_use_gpu=bool(ldr_raw.get("vad_use_gpu", False)),
             vad_speech_threshold=float(ldr_raw.get("vad_speech_threshold", 0.4)),
             vad_min_speech_frame=int(ldr_raw.get("vad_min_speech_frame", 20)),
+            prefetch_factor=int(ldr_raw.get("prefetch_factor", DEFAULT_PREFETCH_FACTOR)),
         ),
         index=IndexSection(
             topk=int(idx_raw.get("topk", 10)),
@@ -486,6 +490,9 @@ def _validate_experiment_config(cfg: ExperimentConfig) -> None:
     if cfg.loader.target_sr <= 0:
         raise ValueError("loader.target_sr must be > 0")
 
+    if cfg.loader.prefetch_factor < 0:
+        raise ValueError("loader.prefetch_factor must be >= 0")
+
     _validate_loader_vad(cfg.loader)
 
 
@@ -509,6 +516,9 @@ def _validate_inference_config(cfg: InferenceConfig) -> None:
 
     if cfg.loader.target_sr <= 0:
         raise ValueError("loader.target_sr must be > 0")
+
+    if cfg.loader.prefetch_factor < 0:
+        raise ValueError("loader.prefetch_factor must be >= 0")
 
     if cfg.defaults.chunk_seconds <= 0:
         raise ValueError("defaults.chunk_seconds must be > 0")

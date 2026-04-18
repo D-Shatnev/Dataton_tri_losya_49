@@ -45,6 +45,7 @@ from dataton_tri_losya_49.pipeline.components.evaluators import PrecisionAtKEval
 from dataton_tri_losya_49.pipeline.components.indexers import FaissASNormIndexer, FaissInnerProductIndexer
 from dataton_tri_losya_49.pipeline.components.loaders import (
     CsvAudioDatasetLoader,
+    PrefetchDatasetLoader,
     SoundFileWaveformLoader,
     VadWaveformLoader,
 )
@@ -286,7 +287,7 @@ def build_dataset_loader(
     """
     waveform_loader = build_waveform_loader(loader_section)
 
-    return CsvAudioDatasetLoader(
+    dataset = CsvAudioDatasetLoader(
         csv_path=resolve_path(data_section.csv),
         root=resolve_path(data_section.root),
         filepath_col=data_section.filepath_col,
@@ -294,3 +295,8 @@ def build_dataset_loader(
         chunk_seconds=float(data_section.chunk_seconds),
         loader=waveform_loader,
     )
+
+    if loader_section.prefetch_factor > 0:
+        return PrefetchDatasetLoader(inner=dataset, prefetch_factor=loader_section.prefetch_factor)
+
+    return dataset
