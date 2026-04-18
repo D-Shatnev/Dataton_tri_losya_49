@@ -16,14 +16,16 @@ TOML structure for experiments (high-level):
 * [experiment]: experiment name and output directory
 * [data]: input CSV with audio paths/labels and preprocessing parameters
 * [encoder]: embedding model settings (type, path, providers)
-* [loader]: waveform loader type and parameters
+* [loader]: waveform loader type and parameters (audio backend only)
+* [vad]: optional VAD settings; absent or type="none" means no VAD
 * [index]: nearest-neighbor backend and top-k
 * [evaluation]: metric type, k values, optional external labels
 
 TOML structure for inference (high-level):
 
 * [encoder]: embedding model settings (type, model_path default, output_name)
-* [loader]: waveform loader type and parameters
+* [loader]: waveform loader type and parameters (audio backend only)
+* [vad]: optional VAD settings; absent or type="none" means no VAD
 * [index]: nearest-neighbor backend and top-k
 * [defaults]: chunk_seconds, batch_size, filepath_col
 
@@ -33,6 +35,7 @@ Notes:
       at runtime via :func:~dataton_tri_losya_49.pipeline.registry.auto_providers.
     - [loader] and [evaluation] sections are optional in experiment configs
       and fall back to sensible defaults (soundfile / precision_at_k).
+    - [vad] section is optional; when absent, VAD is disabled (type="none").
 """
 
 from __future__ import annotations
@@ -97,29 +100,55 @@ class EncoderSection:
 @dataclass(frozen=True)
 class LoaderSection:
     """
-    Waveform loader configuration.
+    Waveform loader (audio backend) configuration.
+
+    This section controls only *how* audio is read from disk and resampled.
+    VAD settings are in :class:VadSection.
 
     Attributes:
-        type: Loader type identifier (e.g. "soundfile", "soundfile_vad").
+        type: Loader type identifier (e.g. "soundfile", "torchaudio").
             See :func:~dataton_tri_losya_49.pipeline.registry.build_waveform_loader for supported values.
         target_sr: Target sample rate in Hz. Audio will be resampled if necessary.
         clip: If True, clip waveform values to [-1, 1].
-        vad_model_dir: Path to FireRedVAD model directory. Required when type="soundfile_vad".
-        vad_use_gpu: Whether to run VAD inference on GPU. Only used when type="soundfile_vad".
-        vad_speech_threshold: VAD probability threshold for speech detection.
-            Only used when type="soundfile_vad".
-        vad_min_speech_frame: Minimum consecutive frames to be labelled as speech.
-            Only used when type="soundfile_vad".
+        prefetch_factor: Number of waveforms to prefetch in background threads.
+            0 disables prefetching.
     """
 
     type: str = "soundfile"
     target_sr: int = DEFAULT_TARGET_SR
     clip: bool = False
-    vad_model_dir: Path | None = None
-    vad_use_gpu: bool = False
-    vad_speech_threshold: float = 0.4
-    vad_min_speech_frame: int = 20
     prefetch_factor: int = DEFAULT_PREFETCH_FACTOR
+
+
+@dataclass(frozen=True)
+class VadSection:
+    """
+    Voice Activity Detection (VAD) configuration.
+
+    When type="none" (default), VAD is disabled and the raw waveform from the
+    loader is passed directly to the encoder.
+
+    When type="fireredvad", the waveform is first filtered through FireRedVAD:
+    only detected speech segments are concatenated and returned.
+
+    Attributes:
+        type: VAD type identifier. "none" disables VAD; "fireredvad" enables
+            FireRedVAD. See :func:~dataton_tri_losya_49.pipeline.registry.build_waveform_loader.
+        model_dir: Path to the FireRedVAD model directory
+            (e.g. ``models/FireRedVAD/VAD``). Required when type="fireredvad".
+        use_gpu: Whether to run VAD inference on GPU.
+            Only used when type="fireredvad".
+        speech_threshold: VAD probability threshold for speech detection (0 < x < 1).
+            Only used when type="fireredvad".
+        min_speech_frame: Minimum consecutive frames to be labelled as speech.
+            Only used when type="fireredvad".
+    """
+
+    type: str = "none"
+    model_dir: Path = Path("models/FireRedVAD/VAD")
+    use_gpu: bool = False
+    speech_threshold: float = 0.4
+    min_speech_frame: int = 20
 
 
 @dataclass(frozen=True)
@@ -231,6 +260,7 @@ class ExperimentConfig:
     index: IndexSection
     evaluation: EvaluationSection
     loader: LoaderSection = field(default_factory=LoaderSection)
+    vad: VadSection = field(default_factory=VadSection)
 
     @property
     def run_dir(self) -> Path:
@@ -252,13 +282,15 @@ class InferenceConfig:
     Attributes:
         encoder: Encoder type / default model path / output name.
         index: Indexer backend and top-k.
-        loader: Waveform loader type and parameters.
+        loader: Waveform loader type and parameters (audio backend only).
+        vad: VAD settings. type="none" disables VAD.
         defaults: Non-path inference defaults (chunk_seconds, batch_size, filepath_col).
     """
 
     encoder: EncoderSection
     index: IndexSection
     loader: LoaderSection
+    vad: VadSection
     defaults: InferenceDefaultsSection
 
 
@@ -285,6 +317,43 @@ def _require(d: dict[str, Any], key: str, section: str) -> Any:
     if key not in d:
         raise ValueError(f"Missing key '{key}' in section [{section}]")
     return d[key]
+
+
+def _parse_vad_section(vad_raw: dict[str, Any]) -> VadSection:
+    """
+    Parse a raw [vad] TOML dict into a :class:VadSection.
+
+    Args:
+        vad_raw: Raw mapping from TOML (may be empty dict if section absent).
+
+    Returns:
+        Parsed :class:VadSection.
+    """
+    return VadSection(
+        type=str(vad_raw.get("type", "none")),
+        model_dir=Path(str(vad_raw.get("model_dir", "models/FireRedVAD/VAD"))),
+        use_gpu=bool(vad_raw.get("use_gpu", False)),
+        speech_threshold=float(vad_raw.get("speech_threshold", 0.4)),
+        min_speech_frame=int(vad_raw.get("min_speech_frame", 20)),
+    )
+
+
+def _parse_loader_section(ldr_raw: dict[str, Any]) -> LoaderSection:
+    """
+    Parse a raw [loader] TOML dict into a :class:LoaderSection.
+
+    Args:
+        ldr_raw: Raw mapping from TOML (may be empty dict if section absent).
+
+    Returns:
+        Parsed :class:LoaderSection.
+    """
+    return LoaderSection(
+        type=str(ldr_raw.get("type", "soundfile")),
+        target_sr=int(ldr_raw.get("target_sr", DEFAULT_TARGET_SR)),
+        clip=bool(ldr_raw.get("clip", False)),
+        prefetch_factor=int(ldr_raw.get("prefetch_factor", DEFAULT_PREFETCH_FACTOR)),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -318,6 +387,7 @@ def load_experiment_config(path: Path) -> ExperimentConfig:
     data_raw = raw.get("data", {})
     enc_raw = raw.get("encoder", {})
     ldr_raw = raw.get("loader", {})
+    vad_raw = raw.get("vad", {})
     idx_raw = raw.get("index", {})
     eval_raw = raw.get("evaluation", {})
 
@@ -350,16 +420,8 @@ def load_experiment_config(path: Path) -> ExperimentConfig:
             embedding_dim=int(enc_raw.get("embedding_dim", 192)),
             force_reload=bool(enc_raw.get("force_reload", False)),
         ),
-        loader=LoaderSection(
-            type=str(ldr_raw.get("type", "soundfile")),
-            target_sr=int(ldr_raw.get("target_sr", DEFAULT_TARGET_SR)),
-            clip=bool(ldr_raw.get("clip", False)),
-            vad_model_dir=(Path(str(ldr_raw["vad_model_dir"])) if "vad_model_dir" in ldr_raw else None),
-            vad_use_gpu=bool(ldr_raw.get("vad_use_gpu", False)),
-            vad_speech_threshold=float(ldr_raw.get("vad_speech_threshold", 0.4)),
-            vad_min_speech_frame=int(ldr_raw.get("vad_min_speech_frame", 20)),
-            prefetch_factor=int(ldr_raw.get("prefetch_factor", DEFAULT_PREFETCH_FACTOR)),
-        ),
+        loader=_parse_loader_section(ldr_raw),
+        vad=_parse_vad_section(vad_raw),
         index=IndexSection(
             topk=int(idx_raw.get("topk", 10)),
             backend=str(idx_raw.get("backend", "faiss_ip")),
@@ -400,6 +462,7 @@ def load_inference_config(path: Path) -> InferenceConfig:
 
     enc_raw = raw.get("encoder", {})
     ldr_raw = raw.get("loader", {})
+    vad_raw = raw.get("vad", {})
     idx_raw = raw.get("index", {})
     def_raw = raw.get("defaults", {})
 
@@ -420,16 +483,8 @@ def load_inference_config(path: Path) -> InferenceConfig:
             embedding_dim=int(enc_raw.get("embedding_dim", 192)),
             force_reload=bool(enc_raw.get("force_reload", False)),
         ),
-        loader=LoaderSection(
-            type=str(ldr_raw.get("type", "soundfile")),
-            target_sr=int(ldr_raw.get("target_sr", DEFAULT_TARGET_SR)),
-            clip=bool(ldr_raw.get("clip", False)),
-            vad_model_dir=(Path(str(ldr_raw["vad_model_dir"])) if "vad_model_dir" in ldr_raw else None),
-            vad_use_gpu=bool(ldr_raw.get("vad_use_gpu", False)),
-            vad_speech_threshold=float(ldr_raw.get("vad_speech_threshold", 0.4)),
-            vad_min_speech_frame=int(ldr_raw.get("vad_min_speech_frame", 20)),
-            prefetch_factor=int(ldr_raw.get("prefetch_factor", DEFAULT_PREFETCH_FACTOR)),
-        ),
+        loader=_parse_loader_section(ldr_raw),
+        vad=_parse_vad_section(vad_raw),
         index=IndexSection(
             topk=int(idx_raw.get("topk", 10)),
             backend=str(idx_raw.get("backend", "faiss_ip")),
@@ -493,7 +548,7 @@ def _validate_experiment_config(cfg: ExperimentConfig) -> None:
     if cfg.loader.prefetch_factor < 0:
         raise ValueError("loader.prefetch_factor must be >= 0")
 
-    _validate_loader_vad(cfg.loader)
+    _validate_vad_section(cfg.vad)
 
 
 def _validate_inference_config(cfg: InferenceConfig) -> None:
@@ -526,27 +581,27 @@ def _validate_inference_config(cfg: InferenceConfig) -> None:
     if cfg.defaults.batch_size <= 0:
         raise ValueError("defaults.batch_size must be > 0")
 
-    _validate_loader_vad(cfg.loader)
+    _validate_vad_section(cfg.vad)
 
 
-def _validate_loader_vad(loader: LoaderSection) -> None:
-    """Validate VAD-specific loader constraints.
+def _validate_vad_section(vad: VadSection) -> None:
+    """Validate VAD section constraints.
 
     Args:
-        loader: LoaderSection to validate.
+        vad: VadSection to validate.
 
     Raises:
-        ValueError: If loader.type is "soundfile_vad" but vad_model_dir is not set,
-            or if vad_speech_threshold / vad_min_speech_frame are out of range.
+        ValueError: If vad.type is "fireredvad" but speech_threshold / min_speech_frame
+            are out of range, or if vad.type is unknown.
     """
-    if loader.type != "soundfile_vad":
+    if vad.type == "none":
         return
 
-    if loader.vad_model_dir is None:
-        raise ValueError("loader.vad_model_dir is required when loader.type = 'soundfile_vad'")
+    if vad.type == "fireredvad":
+        if not 0.0 < vad.speech_threshold < 1.0:
+            raise ValueError("vad.speech_threshold must be in (0, 1)")
+        if vad.min_speech_frame <= 0:
+            raise ValueError("vad.min_speech_frame must be > 0")
+        return
 
-    if not 0.0 < loader.vad_speech_threshold < 1.0:
-        raise ValueError("loader.vad_speech_threshold must be in (0, 1)")
-
-    if loader.vad_min_speech_frame <= 0:
-        raise ValueError("loader.vad_min_speech_frame must be > 0")
+    raise ValueError(f"Unknown vad.type: {vad.type!r}. Supported: 'none', 'fireredvad'.")

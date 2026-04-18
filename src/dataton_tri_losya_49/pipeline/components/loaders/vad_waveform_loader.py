@@ -2,11 +2,11 @@
 VAD-aware waveform loader.
 
 This module provides :class:`VadWaveformLoader` — a drop-in replacement for
-:class:`~dataton_tri_losya_49.pipeline.components.loaders.soundfile.SoundFileWaveformLoader`
+any :class:`~dataton_tri_losya_49.pipeline.interfaces.WaveformLoader` implementation
 that runs FireRedVAD on each audio file before returning the waveform.
 
 Processing steps:
-    1. Load raw waveform (float32) via :class:`SoundFileWaveformLoader`.
+    1. Load raw waveform (float32) via the injected ``base_loader``.
     2. Convert to int16 and pass directly to :class:`fireredvad.FireRedVad` as
        ``(wav_int16, sample_rate)`` tuple — avoids a second disk read.
     3. Concatenate all detected speech segments into a single waveform.
@@ -23,12 +23,12 @@ import logging
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 from fireredvad import FireRedVad, FireRedVadConfig
 
 from dataton_tri_losya_49.constants import DEFAULT_TARGET_SR
-from dataton_tri_losya_49.pipeline.components.loaders.soundfile import SoundFileWaveformLoader
 
 logger = logging.getLogger(__name__)
 
@@ -36,15 +36,15 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class VadWaveformLoader:
     """
-    Load audio, strip silence via FireRedVAD, return speech-only waveform.
+    Load audio via a base loader, strip silence via FireRedVAD, return speech-only waveform.
 
-    Implements the same interface as
-    :class:`~dataton_tri_losya_49.pipeline.components.loaders.soundfile.SoundFileWaveformLoader`
+    Implements the same interface as any
+    :class:`~dataton_tri_losya_49.pipeline.interfaces.WaveformLoader`
     (``load(path) -> np.ndarray``).
 
-    The audio file is read **once** by :class:`SoundFileWaveformLoader` and the
-    resulting waveform is passed directly to FireRedVAD as an ``(int16, sr)``
-    tuple — no second disk read occurs.
+    The audio file is read **once** by ``base_loader`` and the resulting waveform
+    is passed directly to FireRedVAD as an ``(int16, sr)`` tuple — no second disk
+    read occurs.
 
     Speech segments detected by VAD are concatenated into a single waveform.
     If VAD finds no speech the original waveform is returned unchanged and a
@@ -54,8 +54,14 @@ class VadWaveformLoader:
     read by the runner after the full dataset pass.
 
     Args:
-        target_sr: Target sample rate in Hz. Audio is resampled if necessary.
-        clip: If True, clip waveform values to [-1, 1].
+        base_loader: Pre-constructed waveform loader used to read audio files.
+            Any object implementing ``load(path: Path) -> np.ndarray`` is accepted
+            (e.g. :class:`~dataton_tri_losya_49.pipeline.components.loaders.soundfile.SoundFileWaveformLoader`
+            or :class:`~dataton_tri_losya_49.pipeline.components.loaders.torchaudio_loader.TorchAudioWaveformLoader`).
+            The loader's ``target_sr`` is used as the sample rate passed to FireRedVAD.
+        target_sr: Sample rate of the waveforms produced by ``base_loader``.
+            Must match ``base_loader.target_sr``. Used to convert VAD timestamps
+            (seconds) to sample indices.
         vad_model_dir: Path to the FireRedVAD model directory
             (e.g. ``models/FireRedVAD/VAD``).
         vad_use_gpu: Whether to run VAD inference on GPU.
@@ -64,23 +70,19 @@ class VadWaveformLoader:
             considered speech.
     """
 
+    base_loader: Any  # WaveformLoader protocol; Any avoids circular import
     target_sr: int = DEFAULT_TARGET_SR
-    clip: bool = False
     vad_model_dir: Path = Path("models/FireRedVAD/VAD")
     vad_use_gpu: bool = False
     vad_speech_threshold: float = 0.4
     vad_min_speech_frame: int = 20
 
     # Private fields — initialised in __post_init__, not part of the public API.
-    _base_loader: SoundFileWaveformLoader = field(init=False, repr=False)
     _vad: FireRedVad = field(init=False, repr=False)
     _vad_time_s: float = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        """Initialise base loader, VAD model and timing accumulator."""
-        base_loader = SoundFileWaveformLoader(target_sr=self.target_sr, clip=self.clip)
-        object.__setattr__(self, "_base_loader", base_loader)
-
+        """Initialise VAD model and timing accumulator."""
         vad_config = FireRedVadConfig(
             use_gpu=self.vad_use_gpu,
             speech_threshold=self.vad_speech_threshold,
@@ -88,7 +90,6 @@ class VadWaveformLoader:
         )
         vad = FireRedVad.from_pretrained(str(self.vad_model_dir), vad_config)
         object.__setattr__(self, "_vad", vad)
-
         object.__setattr__(self, "_vad_time_s", 0.0)
 
     @property
@@ -105,14 +106,14 @@ class VadWaveformLoader:
         to avoid a second disk read.
 
         Args:
-            path: Path to an audio file readable by soundfile.
+            path: Path to an audio file readable by the base loader.
 
         Returns:
             1-D mono float32 waveform containing only detected speech segments
             concatenated together. Falls back to the full waveform if VAD
             detects no speech.
         """
-        wav = self._base_loader.load(path)
+        wav = self.base_loader.load(path)
 
         # FireRedVAD's AudioFeat.extract() accepts (wav_np, sample_rate) tuple
         # where wav_np must be int16 (matches its sf.read(..., dtype="int16") path).

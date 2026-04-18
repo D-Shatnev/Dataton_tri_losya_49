@@ -32,6 +32,19 @@ Adding a new encoder
    :class:~dataton_tri_losya_49.pipeline.interfaces.Encoder.
 2. Add an elif section.type == "your_type": branch in :func:build_encoder.
 3. Write a TOML config with [encoder] type = "your_type".
+
+Adding a new waveform loader
+----------------------------
+1. Create a class in pipeline/components/loaders/ implementing
+   :class:~dataton_tri_losya_49.pipeline.interfaces.WaveformLoader.
+2. Add an elif loader.type == "your_type": branch in :func:build_waveform_loader.
+3. Write a TOML config with [loader] type = "your_type".
+
+Adding a new VAD backend
+------------------------
+1. Create a wrapper class (or extend VadWaveformLoader) in pipeline/components/loaders/.
+2. Add an elif vad.type == "your_vad": branch in :func:build_waveform_loader.
+3. Write a TOML config with [vad] type = "your_vad".
 """
 
 from __future__ import annotations
@@ -47,6 +60,7 @@ from dataton_tri_losya_49.pipeline.components.loaders import (
     CsvAudioDatasetLoader,
     PrefetchDatasetLoader,
     SoundFileWaveformLoader,
+    TorchAudioWaveformLoader,
     VadWaveformLoader,
 )
 from dataton_tri_losya_49.pipeline.config import (
@@ -55,6 +69,7 @@ from dataton_tri_losya_49.pipeline.config import (
     EvaluationSection,
     IndexSection,
     LoaderSection,
+    VadSection,
 )
 from dataton_tri_losya_49.pipeline.interfaces import DatasetLoader, Encoder, Evaluator, Indexer, WaveformLoader
 from dataton_tri_losya_49.pipeline.utils import resolve_path
@@ -124,6 +139,7 @@ def build_encoder(
 
     Supported types:
         - "onnx" → :class:~dataton_tri_losya_49.pipeline.components.encoders.OnnxEncoder
+        - "redimnet" → :class:~dataton_tri_losya_49.pipeline.components.encoders.ReDimNetEncoder
     """
     if section.type == "onnx":
         effective_providers = providers if providers is not None else resolve_providers(section.providers)
@@ -170,6 +186,7 @@ def build_indexer(section: IndexSection) -> Indexer:
 
     Supported backends:
         - "faiss_ip" → :class:~dataton_tri_losya_49.pipeline.components.indexers.FaissInnerProductIndexer
+        - "faiss_as_norm" → :class:~dataton_tri_losya_49.pipeline.components.indexers.FaissASNormIndexer
     """
     if section.backend == "faiss_ip":
         return FaissInnerProductIndexer()
@@ -193,42 +210,62 @@ def build_indexer(section: IndexSection) -> Indexer:
 # ---------------------------------------------------------------------------
 
 
-def build_waveform_loader(section: LoaderSection) -> WaveformLoader:
+def build_waveform_loader(loader: LoaderSection, vad: VadSection) -> WaveformLoader:
     """
-    Instantiate a :class:~dataton_tri_losya_49.pipeline.interfaces.WaveformLoader from config section.
+    Instantiate a :class:~dataton_tri_losya_49.pipeline.interfaces.WaveformLoader from config sections.
+
+    First builds a base audio loader from ``loader.type``, then optionally wraps
+    it with a VAD layer based on ``vad.type``.
 
     Args:
-        section: LoaderSection dataclass instance.
+        loader: LoaderSection dataclass (audio backend type and parameters).
+        vad: VadSection dataclass (VAD type and parameters).
+            Pass a VadSection with type="none" to skip VAD.
 
     Returns:
-        WaveformLoader instance matching section.type.
+        WaveformLoader instance. If vad.type="fireredvad", returns a
+        :class:~dataton_tri_losya_49.pipeline.components.loaders.VadWaveformLoader
+        wrapping the base loader; otherwise returns the base loader directly.
 
     Raises:
-        ValueError: If section.type is unknown.
+        ValueError: If loader.type or vad.type is unknown.
 
-    Supported types:
+    Supported loader types:
         - "soundfile" → :class:~dataton_tri_losya_49.pipeline.components.loaders.SoundFileWaveformLoader
-    """
-    if section.type == "soundfile":
-        return SoundFileWaveformLoader(target_sr=section.target_sr, clip=section.clip)
+        - "torchaudio" → :class:~dataton_tri_losya_49.pipeline.components.loaders.TorchAudioWaveformLoader
 
-    if section.type == "soundfile_vad":
-        if section.vad_model_dir is None:
-            raise ValueError(
-                "loader.vad_model_dir is required when loader.type = 'soundfile_vad'"
-            )
+    Supported vad types:
+        - "none" → no VAD wrapping
+        - "fireredvad" → :class:~dataton_tri_losya_49.pipeline.components.loaders.VadWaveformLoader
+    """
+    # --- base audio loader ---
+    if loader.type == "soundfile":
+        base: WaveformLoader = SoundFileWaveformLoader(target_sr=loader.target_sr, clip=loader.clip)
+    elif loader.type == "torchaudio":
+        base = TorchAudioWaveformLoader(target_sr=loader.target_sr, clip=loader.clip)
+    else:
+        raise ValueError(
+            f"Unknown loader type: {loader.type!r}. "
+            "Register a new loader in pipeline/registry.py :: build_waveform_loader()."
+        )
+
+    # --- optional VAD wrapper ---
+    if vad.type == "none":
+        return base
+
+    if vad.type == "fireredvad":
         return VadWaveformLoader(
-            target_sr=section.target_sr,
-            clip=section.clip,
-            vad_model_dir=resolve_path(section.vad_model_dir),
-            vad_use_gpu=section.vad_use_gpu,
-            vad_speech_threshold=section.vad_speech_threshold,
-            vad_min_speech_frame=section.vad_min_speech_frame,
+            base_loader=base,
+            target_sr=loader.target_sr,
+            vad_model_dir=resolve_path(vad.model_dir),
+            vad_use_gpu=vad.use_gpu,
+            vad_speech_threshold=vad.speech_threshold,
+            vad_min_speech_frame=vad.min_speech_frame,
         )
 
     raise ValueError(
-        f"Unknown loader type: {section.type!r}. "
-        "Register a new loader in pipeline/registry.py :: build_waveform_loader()."
+        f"Unknown vad type: {vad.type!r}. "
+        "Register a new VAD backend in pipeline/registry.py :: build_waveform_loader()."
     )
 
 
@@ -270,22 +307,25 @@ def build_evaluator(section: EvaluationSection) -> Evaluator:
 def build_dataset_loader(
     data_section: DataSection,
     loader_section: LoaderSection,
+    vad_section: VadSection,
 ) -> DatasetLoader:
     """
     Build a :class:~dataton_tri_losya_49.pipeline.interfaces.DatasetLoader.
 
     Dataset loading is currently always CSV-backed via
     :class:~dataton_tri_losya_49.pipeline.components.loaders.CsvAudioDatasetLoader.
-    The waveform loader is selected via loader_section.type.
+    The waveform loader (and optional VAD wrapper) is selected via
+    ``loader_section.type`` and ``vad_section.type``.
 
     Args:
         data_section: DataSection dataclass (csv / root / filepath_col / etc.).
-        loader_section: LoaderSection dataclass (waveform loader type/params).
+        loader_section: LoaderSection dataclass (audio backend type/params).
+        vad_section: VadSection dataclass (VAD type/params).
 
     Returns:
         Configured :class:~dataton_tri_losya_49.pipeline.interfaces.DatasetLoader.
     """
-    waveform_loader = build_waveform_loader(loader_section)
+    waveform_loader = build_waveform_loader(loader_section, vad_section)
 
     dataset = CsvAudioDatasetLoader(
         csv_path=resolve_path(data_section.csv),

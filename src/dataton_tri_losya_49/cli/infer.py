@@ -118,7 +118,7 @@ def main(argv: list[str] | None = None) -> int:
     # --- build components via registry ---
     encoder = build_encoder(cfg.encoder, providers=providers, model_path_override=args.model)
     indexer = build_indexer(cfg.index)
-    waveform_loader = build_waveform_loader(cfg.loader)
+    waveform_loader = build_waveform_loader(cfg.loader, cfg.vad)
 
     # --- dataset ---
     dataset = CsvAudioDatasetLoader(

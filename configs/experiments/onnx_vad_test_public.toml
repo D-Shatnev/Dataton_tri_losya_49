@@ -17,13 +17,16 @@ output_name = "embeddings"
 # To pin explicitly:  providers = ["CPUExecutionProvider"]
 
 [loader]
-type                 = "soundfile_vad"
-target_sr            = 16000
-clip                 = false
-vad_model_dir        = "models/FireRedVAD/VAD"
-vad_use_gpu          = true
-vad_speech_threshold = 0.4
-vad_min_speech_frame = 20
+type      = "soundfile"
+target_sr = 16000
+clip      = false
+
+[vad]
+type             = "fireredvad"
+model_dir        = "models/FireRedVAD/VAD"
+use_gpu          = true
+speech_threshold = 0.4
+min_speech_frame = 20
 
 [index]
 backend = "faiss_ip"

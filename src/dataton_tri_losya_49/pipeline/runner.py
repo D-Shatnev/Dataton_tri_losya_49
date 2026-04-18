@@ -77,7 +77,7 @@ def build_components(cfg: ExperimentConfig) -> Components:
         encoder=build_encoder(cfg.encoder),
         indexer=build_indexer(cfg.index),
         evaluator=build_evaluator(cfg.evaluation),
-        dataset=build_dataset_loader(cfg.data, cfg.loader),
+        dataset=build_dataset_loader(cfg.data, cfg.loader, cfg.vad),
     )
 
 

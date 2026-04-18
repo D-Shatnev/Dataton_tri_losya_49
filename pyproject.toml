@@ -16,8 +16,8 @@ dependencies = [
     "soundfile==0.12.1",
     "tqdm>=4.66",
     "fireredvad[gpu]>=0.0.2",
-    "torch>=2.0",
-    "torchaudio>=2.0",
+    "torch==2.6.0",
+    "torchaudio==2.6.0",
     # TorchInductor / torch.compile runtime requirements:
     #   ninja     — parallel C++/Triton kernel compilation (significantly faster than make)
     #   setuptools — required to build generated C++ extensions at runtime
@@ -76,3 +76,16 @@ indent-style = "space"
 [tool.pylint]
 max-line-length = 120
 disable = "W0707, R0903, W0718, W1404, R0902"
+
+# ---------------------------------------------------------------------------
+# PyTorch CUDA index — only cu124 supports Python 3.13 (cp313) on linux_x86_64.
+# torch 2.6.0+cu124 and torchaudio 2.6.0+cu124 are the latest available builds.
+# ---------------------------------------------------------------------------
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu124" }]
+torchaudio = [{ index = "pytorch-cu124" }]

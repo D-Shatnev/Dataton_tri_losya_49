@@ -7,9 +7,11 @@ FROM python:3.13-slim AS builder
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# Build-time system deps: libsndfile1 (soundfile wheel), build tools for C extensions
+# Build-time system deps: libsndfile1 (soundfile wheel), ffmpeg (torchaudio ffmpeg backend),
+# build tools for C extensions
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libsndfile1 \
+    ffmpeg \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
@@ -51,6 +53,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 #   python3.13-venv   — needed so the venv is usable
 #   python3.13-dev    — Python headers required by setuptools / Inductor C++ extensions
 #   libsndfile1       — soundfile audio backend
+#   ffmpeg            — torchaudio ffmpeg backend (decodes MP3, AAC, Opus, OGG, …)
 #   libgomp1          — OpenMP (faiss, onnxruntime)
 #   gcc g++           — C/C++17 compiler required by Triton and TorchInductor to
 #                       JIT-compile generated C++ and CUDA kernels at runtime
@@ -66,6 +69,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.13-venv \
     python3.13-dev \
     libsndfile1 \
+    ffmpeg \
     libgomp1 \
     gcc \
     g++ \

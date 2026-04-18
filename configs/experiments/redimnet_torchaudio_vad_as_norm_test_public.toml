@@ -1,5 +1,5 @@
 [experiment]
-name    = "redimnet_vad_as_norm_test_public"
+name    = "redimnet_torchaudio_vad_as_norm_test_public"
 out_dir = "experiments"
 
 [data]
@@ -20,7 +20,7 @@ embedding_dim = 192
 force_reload  = false
 
 [loader]
-type            = "soundfile"
+type            = "torchaudio"
 target_sr       = 16000
 clip            = false
 prefetch_factor = 8

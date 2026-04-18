@@ -4,7 +4,7 @@ out_dir = "experiments"
 
 [data]
 csv            = "data/test_public_small_fragment.csv"
-root           = "data"
+root           = "."
 filepath_col   = "filepath"
 speaker_id_col = "speaker_id"
 chunk_seconds  = 6.0

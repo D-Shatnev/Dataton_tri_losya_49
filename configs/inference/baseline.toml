@@ -33,6 +33,14 @@ target_sr       = 16000
 clip            = false
 prefetch_factor = 8
 
+# [vad]
+# Uncomment and configure to enable Voice Activity Detection:
+# type             = "fireredvad"
+# model_dir        = "models/FireRedVAD/VAD"
+# use_gpu          = true
+# speech_threshold = 0.4
+# min_speech_frame = 20
+
 [index]
 backend = "faiss_ip"
 topk    = 10

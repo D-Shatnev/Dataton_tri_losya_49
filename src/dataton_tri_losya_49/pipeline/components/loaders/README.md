@@ -7,6 +7,74 @@
 1) **Waveform loader** - читает один аудиофайл и приводит его к единому формату.
 2) **Dataset loader** - читает CSV-метаданные и итерируется по датасету, используя waveform loader.
 
+### Конфигурация: два независимых измерения
+
+Начиная с текущей версии, аудио-бэкенд и VAD настраиваются **отдельными секциями** в TOML:
+
+```toml
+[loader]
+type      = "soundfile"   # или "torchaudio" — бэкенд чтения аудио
+target_sr = 16000
+clip      = false
+
+[vad]
+type             = "fireredvad"   # или "none" / отсутствие секции — VAD выключен
+model_dir        = "models/FireRedVAD/VAD"
+use_gpu          = true
+speech_threshold = 0.4
+min_speech_frame = 20
+```
+
+Это позволяет комбинировать любой лоадер с любым VAD:
+
+| `[loader].type` | `[vad].type` | Результат |
+|-----------------|--------------|-----------|
+| `"soundfile"` | `"none"` / отсутствует | soundfile без VAD |
+| `"soundfile"` | `"fireredvad"` | soundfile + FireRedVAD |
+| `"torchaudio"` | `"none"` / отсутствует | torchaudio без VAD |
+| `"torchaudio"` | `"fireredvad"` | torchaudio + FireRedVAD |
+
+---
+
+### TorchAudioWaveformLoader (torchaudio_loader.py)
+
+Назначение: загрузить аудио-файл через `torchaudio` с бэкендом FFmpeg и привести его к формату, который ожидают следующие компоненты пайплайна.
+
+Преимущества перед `SoundFileWaveformLoader`:
+
+- Поддерживает значительно больше форматов (MP3, AAC, Opus, OGG, FLAC, WAV, M4A, …) через системный FFmpeg.
+- Ресемплинг выполняется через `torchaudio.functional.resample` (нативный torch, без scipy).
+
+Поведение:
+
+- читает аудио через `torchaudio.load(..., backend="ffmpeg")`;
+- downmix в mono (усреднение каналов через `tensor.mean(dim=0)`);
+- ресемплит к `target_sr` через `torchaudio.functional.resample` если нужно;
+- конвертирует в `numpy float32`;
+- заменяет NaN/Inf на 0;
+- опционально (флаг `clip`) клиппит амплитуды в [-1, 1] — **по умолчанию выключено**.
+
+Требования:
+
+- `torchaudio >= 2.0` (уже есть в зависимостях проекта).
+- Системный бинарник `ffmpeg` должен быть доступен в `PATH` (установлен в Docker через пакет `ffmpeg`).
+
+Параметры:
+
+- `target_sr: int` — целевой sample rate (по умолчанию 16 000 Гц).
+- `clip: bool = False` — включить клиппинг [-1, 1].
+
+Использование в TOML-конфиге:
+
+```toml
+[loader]
+type      = "torchaudio"
+target_sr = 16000
+clip      = false
+```
+
+---
+
 ### SoundFileWaveformLoader (soundfile.py)
 
 Назначение: загрузить аудио-файл и привести его к формату, который ожидают следующие компоненты пайплайна.
@@ -24,15 +92,17 @@
 - `target_sr: int` - целевой sample rate.
 - `clip: bool = False` - включить клиппинг [-1, 1].
 
+---
+
 ### VadWaveformLoader (vad_waveform_loader.py)
 
-Назначение: загрузить аудио-файл, вырезать только речевые сегменты через FireRedVAD и вернуть их конкатенацию.
+Назначение: обернуть любой waveform loader, вырезать только речевые сегменты через FireRedVAD и вернуть их конкатенацию.
 
-Является drop-in заменой `SoundFileWaveformLoader` — реализует тот же интерфейс `WaveformLoader`.
+Является drop-in заменой любого `WaveformLoader` — реализует тот же интерфейс.
 
 Поведение:
 
-- загружает аудио через `SoundFileWaveformLoader` (ресемплинг, mono, NaN-замена);
+- загружает аудио через `base_loader` (любой waveform loader — soundfile или torchaudio);
 - прогоняет файл через `FireRedVad.detect()`;
 - вырезает все речевые сегменты по временным меткам (`timestamps`) и конкатенирует их в один waveform;
 - если VAD не нашёл речи — возвращает оригинальный waveform и логирует `WARNING`;
@@ -42,7 +112,7 @@
 
 ```
 файл на диске (любая длина)
-    ↓  SoundFileWaveformLoader.load()  — читает ВЕСЬ файл
+    ↓  base_loader.load()              — читает ВЕСЬ файл (soundfile или torchaudio)
     ↓  FireRedVad.detect(path)         — VAD работает с ПОЛНЫМ файлом
     ↓  вырезаем речевые сегменты + конкатенируем
     ↓  VadWaveformLoader.load() возвращает speech-only waveform
@@ -52,45 +122,63 @@
 Ограничение `chunk_seconds = 6` применяется **после** VAD — в VAD идёт полный файл,
 а 6 секунд берутся уже из чистой речи.
 
-Параметры:
+`VadWaveformLoader` создаётся автоматически реестром при `[vad] type = "fireredvad"`.
+Напрямую инстанциировать его в конфиге не нужно.
 
-- `target_sr: int` - целевой sample rate (передаётся во внутренний `SoundFileWaveformLoader`).
-- `clip: bool = False` - включить клиппинг [-1, 1].
-- `vad_model_dir: Path` - путь к директории с весами FireRedVAD (например `models/FireRedVAD/VAD`).
-- `vad_use_gpu: bool = False` - запускать VAD на GPU.
-- `vad_speech_threshold: float = 0.4` - порог вероятности для детекции речи (0 < x < 1).
+Параметры секции `[vad]`:
+
+- `type: str` - тип VAD. `"fireredvad"` — включить FireRedVAD; `"none"` или отсутствие секции — выключить.
+- `model_dir: Path` - путь к директории с весами FireRedVAD (например `models/FireRedVAD/VAD`).
+- `use_gpu: bool = false` - запускать VAD на GPU.
+- `speech_threshold: float = 0.4` - порог вероятности для детекции речи (0 < x < 1).
   FireRedVAD выдаёт вероятность речи для каждого фрейма (~10 мс). Фреймы с вероятностью ≥ порога
   считаются речевыми. Ниже порог → больше захватывается (риск ложных срабатываний);
   выше → строже (риск пропустить тихую речь). Значение 0.4 — дефолт из документации FireRedVAD.
-- `vad_min_speech_frame: int = 20` - минимальное число последовательных речевых фреймов для
+- `min_speech_frame: int = 20` - минимальное число последовательных речевых фреймов для
   признания сегмента речью. При фрейме ~10 мс это 200 мс. Короткие всплески короче этого порога игнорируются.
 
-Использование в TOML-конфиге:
+Использование в TOML-конфиге (soundfile + VAD):
 
 ```toml
 [loader]
-type                 = "soundfile_vad"
-target_sr            = 16000
-clip                 = false
-vad_model_dir        = "models/FireRedVAD/VAD"
-vad_use_gpu          = false
-vad_speech_threshold = 0.4
-vad_min_speech_frame = 20
+type      = "soundfile"
+target_sr = 16000
+clip      = false
+
+[vad]
+type             = "fireredvad"
+model_dir        = "models/FireRedVAD/VAD"
+use_gpu          = true
+speech_threshold = 0.4
+min_speech_frame = 20
 ```
 
-Готовый пример конфига: `configs/experiments/onnx_vad_test_public.toml`.
+Использование в TOML-конфиге (torchaudio + VAD):
+
+```toml
+[loader]
+type      = "torchaudio"
+target_sr = 16000
+clip      = false
+
+[vad]
+type             = "fireredvad"
+model_dir        = "models/FireRedVAD/VAD"
+use_gpu          = true
+speech_threshold = 0.4
+min_speech_frame = 20
+```
 
 Скачать веса модели:
 
 ```bash
 # Hugging Face
-hf download FireRedTeam/FireRedVAD --local-dir mo
-dels/FireRedVAD
+hf download FireRedTeam/FireRedVAD --local-dir models/FireRedVAD
 ```
 
 Влияние на `timing.json`:
 
-При использовании `soundfile_vad` в `timing.json` появляются дополнительные поля:
+При использовании `[vad] type = "fireredvad"` в `timing.json` появляются дополнительные поля:
 
 ```json
 {
@@ -112,8 +200,10 @@ inference_time_s = vad_time_s + encoder_time_s
 `vad_time_s` и `encoder_time_s` — декомпозиция `inference_time_s`, а не отдельные фазы.
 `search_time_s` (kNN-поиск) — отдельная фаза, не входит в `inference_time_s`.
 
-При использовании обычного `soundfile` (без VAD) поля `vad_time_s` в `timing.json` нет,
+При использовании лоадера без VAD поля `vad_time_s` в `timing.json` нет,
 а `encoder_time_s ≈ inference_time_s`.
+
+---
 
 ### CsvAudioDatasetLoader (csv_audio_dataset.py)
 
@@ -123,7 +213,7 @@ inference_time_s = vad_time_s + encoder_time_s
 
 - читает CSV (колонка с относительным путем к файлу + опционально `speaker_id`);
 - резолвит пути относительно `root`;
-- грузит waveform через waveform loader (по умолчанию `SoundFileWaveformLoader`, можно заменить на `VadWaveformLoader`);
+- грузит waveform через waveform loader (любой из поддерживаемых, с VAD или без);
 - нормализует длительность до ровно `chunk_seconds`:
   - если аудио длиннее - берётся начало (crop from start);
   - если короче - повторяется (repeat/tile);
@@ -133,5 +223,6 @@ inference_time_s = vad_time_s + encoder_time_s
 
 Ориентируйтесь на протоколы в `src/dataton_tri_losya_49/pipeline/interfaces.py`.
 
-- Для замены чтения/ресемплинга - добавляйте новый waveform loader.
+- Для замены чтения/ресемплинга - добавляйте новый waveform loader (новый файл + ветка в `registry.py :: build_waveform_loader()`).
+- Для нового VAD-бэкенда - добавляйте ветку `vad.type == "your_vad"` в `registry.py :: build_waveform_loader()`.
 - Для изменения логики чтения метаданных/чанкинга - добавляйте новый dataset loader.
