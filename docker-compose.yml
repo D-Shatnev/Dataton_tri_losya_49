@@ -37,7 +37,7 @@ x-base: &base
   environment:
     NVIDIA_VISIBLE_DEVICES: all
   volumes:
-    - ./data:/app/data
+    - /mnt/disk/dataton/Dataton_tri_losya_49/data:/app/data
     - ./models:/app/models
     - ./configs:/app/configs
 
@@ -50,6 +50,7 @@ services:
       CSV_PATH: ${CSV_PATH:-data/test_public.csv}
       OUT_PATH: ${OUT_PATH:-data/submission.csv}
       ROOT_PATH: ${ROOT_PATH:-data}
+      TOPK: ${TOPK:-}
     command:
       - speakerid-infer
       - --csv
@@ -58,12 +59,14 @@ services:
       - ${OUT_PATH:-data/submission.csv}
       - --root
       - ${ROOT_PATH:-data}
+      - --k
+      - ${TOPK:-10}
     network_mode: "host"
 
   experiment:
     <<: *base
     volumes:
-      - ./data:/app/data
+      - /mnt/disk/dataton/Dataton_tri_losya_49/data:/app/data
       - ./models:/app/models
       - ./configs:/app/configs
       - ./experiments:/app/experiments

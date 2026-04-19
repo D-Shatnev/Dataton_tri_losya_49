@@ -22,10 +22,14 @@
 #   providers = ["CPUExecutionProvider"]
 
 [encoder]
-type        = "onnx"
-model_path  = "models/baseline.onnx"   # default; overrideable via --model
-output_name = "embeddings"
-# providers intentionally absent -> auto-detect at runtime
+type          = "redimnet"
+model_path    = "models/backbone_stage2_epoch3.pt"
+model_name    = "b6"
+train_type    = "ft_lm"
+dataset       = "vox2"
+device        = "auto"
+embedding_dim = 192
+force_reload  = false
 
 [loader]
 type            = "soundfile"
@@ -33,17 +37,20 @@ target_sr       = 16000
 clip            = false
 prefetch_factor = 8
 
-# [vad]
-# Uncomment and configure to enable Voice Activity Detection:
-# type             = "fireredvad"
-# model_dir        = "models/FireRedVAD/VAD"
-# use_gpu          = true
-# speech_threshold = 0.4
-# min_speech_frame = 20
+[vad]
+type             = "fireredvad"
+model_dir        = "models/FireRedVAD/VAD"
+use_gpu          = true
+speech_threshold = 0.4
+min_speech_frame = 20
 
 [index]
-backend = "faiss_ip"
-topk    = 10
+backend               = "faiss_as_norm"
+topk                  = 10
+cohort_size           = 1000
+top_n                 = 200
+cohort_seed           = 42
+faiss_candidates_coef = 100
 
 [defaults]
 chunk_seconds = 6.0

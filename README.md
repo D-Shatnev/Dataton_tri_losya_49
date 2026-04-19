@@ -34,7 +34,7 @@ docker compose build
 docker compose run --rm infer
 
 # Инференс с переопределением прямо в командной строке
-CSV_PATH=data/my_data.csv OUT_PATH=data/my_submission.csv docker compose run --rm infer
+CSV_PATH=data/my_data.csv OUT_PATH=data/my_submission.csv TOPK=20 docker compose run --rm infer
 
 # Эксперимент (параметры берутся из .env)
 docker compose run --rm experiment
@@ -61,11 +61,11 @@ cp .env.example .env
 
 | Переменная | Описание |
 |---|---|
+| `TOPK` | Количество соседей для поиска` |
 | `CSV_PATH` | Входной CSV для `speakerid-infer` |
 | `OUT_PATH` | Выходной submission CSV |
 | `ROOT_PATH` | Корень для разрешения путей из CSV |
 | `EXPERIMENT_CONFIG` | TOML-конфиг для `speakerid-experiment` |
-| `BATCH_SIZE` | Размер батча энкодера |
 
 Переменные из командной строки имеют приоритет над `.env`:
 ```bash

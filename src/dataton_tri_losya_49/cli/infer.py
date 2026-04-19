@@ -33,7 +33,7 @@ import argparse
 from pathlib import Path
 
 from dataton_tri_losya_49.io import write_submission_csv
-from dataton_tri_losya_49.pipeline.components.loaders import CsvAudioDatasetLoader
+from dataton_tri_losya_49.pipeline.components.loaders import CsvAudioDatasetLoader, PrefetchDatasetLoader
 from dataton_tri_losya_49.pipeline.config import load_inference_config
 from dataton_tri_losya_49.pipeline.registry import auto_providers, build_encoder, build_indexer, build_waveform_loader
 from dataton_tri_losya_49.pipeline.runner import extract_embeddings
@@ -121,13 +121,15 @@ def main(argv: list[str] | None = None) -> int:
     waveform_loader = build_waveform_loader(cfg.loader, cfg.vad)
 
     # --- dataset ---
-    dataset = CsvAudioDatasetLoader(
+    dataset: CsvAudioDatasetLoader | PrefetchDatasetLoader = CsvAudioDatasetLoader(
         csv_path=args.csv.resolve(),
         root=args.root.resolve(),
         filepath_col=cfg.defaults.filepath_col,
         chunk_seconds=chunk_seconds,
         loader=waveform_loader,
     )
+    if cfg.loader.prefetch_factor > 0:
+        dataset = PrefetchDatasetLoader(inner=dataset, prefetch_factor=cfg.loader.prefetch_factor)
     filepaths = list(dataset.filepaths)
 
     # --- inference ---
