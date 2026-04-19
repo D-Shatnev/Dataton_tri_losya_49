@@ -25,6 +25,7 @@ x-base: &base
   build:
     context: .
     dockerfile: Dockerfile
+    network: host
   image: speakerid:vad-redimnet-as-norm
   deploy:
     resources:
@@ -36,8 +37,8 @@ x-base: &base
   environment:
     NVIDIA_VISIBLE_DEVICES: all
   volumes:
-    - /mnt/sda/dataton/datasets:/app/data
-    - /mnt/sda/dataton/models:/app/models
+    - ./data:/app/data
+    - ./models:/app/models
     - ./configs:/app/configs
 
 services:
@@ -57,12 +58,13 @@ services:
       - ${OUT_PATH:-data/submission.csv}
       - --root
       - ${ROOT_PATH:-data}
+    network_mode: "host"
 
   experiment:
     <<: *base
     volumes:
-      - /mnt/sda/dataton/datasets:/app/data
-      - /mnt/sda/dataton/models:/app/models
+      - ./data:/app/data
+      - ./models:/app/models
       - ./configs:/app/configs
       - ./experiments:/app/experiments
     environment:
@@ -76,3 +78,4 @@ services:
       - ${EXPERIMENT_CONFIG:-configs/experiments/onnx_baseline_test_public.toml}
       - --batch-size
       - ${BATCH_SIZE:-1}
+    network_mode: "host"

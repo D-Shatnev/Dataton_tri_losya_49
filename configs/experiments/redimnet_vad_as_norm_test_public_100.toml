@@ -1,5 +1,5 @@
 [experiment]
-name    = "redimnet_vad_as_norm_test_public"
+name    = "redimnet_vad_as_norm_test_public_100"
 out_dir = "experiments"
 
 [data]
@@ -38,7 +38,7 @@ topk             = 10
 cohort_size      = 1000   # random cohort size for mu/sigma estimation
 top_n            = 200    # top-N cohort scores used for statistics (~20% of cohort_size)
 cohort_seed      = 42     # fixed seed for reproducibility
-faiss_candidates_coef = 10    # FAISS retrieves this many candidates before AS-Norm re-ranking (>= topk)
+faiss_candidates_coef = 100    # FAISS retrieves this many candidates before AS-Norm re-ranking (>= topk)
 
 [evaluation]
 type = "precision_at_k"
