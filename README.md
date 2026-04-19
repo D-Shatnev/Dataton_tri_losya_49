@@ -8,19 +8,6 @@
 
 ## Быстрый старт
 
-### Локально (uv)
-
-```bash
-# Установить зависимости
-uv sync
-
-# Инференс: CSV -> submission.csv
-uv run speakerid-infer --csv data/test.csv --out submission.csv --root data
-
-# Эксперимент с метриками
-uv run speakerid-experiment --config configs/experiments/onnx_baseline_test_public.toml
-```
-
 ### Docker
 
 ```bash
