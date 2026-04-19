@@ -160,6 +160,7 @@ def build_encoder(
             device=section.device,
             embedding_dim=section.embedding_dim,
             force_reload=section.force_reload,
+            checkpoint_path=str(section.model_path) if section.model_path.parts else "",
         )
 
     raise ValueError(

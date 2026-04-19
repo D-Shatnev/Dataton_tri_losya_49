@@ -50,6 +50,7 @@ class ReDimNetEncoder:
     device: str = "auto"
     embedding_dim: int = 192
     force_reload: bool = False
+    checkpoint_path: str = ""
     _model: torch.nn.Module = field(init=False, repr=False)
     _device: torch.device = field(init=False, repr=False)
     _dtype: torch.dtype = field(init=False, repr=False)
@@ -70,6 +71,11 @@ class ReDimNetEncoder:
             force_reload=self.force_reload,
             trust_repo=True,
         )
+
+        if self.checkpoint_path:
+            sd = torch.load(self.checkpoint_path, map_location="cpu", weights_only=True)
+            self._model.load_state_dict(sd, strict=True)
+
         self._model = self._model.to(self._device)
         self._model.eval()
         self._model = torch.compile(self._model, backend="inductor", mode="reduce-overhead")
