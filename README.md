@@ -19,16 +19,28 @@ docker compose build
 
 # Инференс (параметры берутся из .env)
 docker compose run --rm infer
-
-# Инференс с переопределением прямо в командной строке
-CSV_PATH=data/my_data.csv OUT_PATH=data/my_submission.csv TOPK=20 docker compose run --rm infer
-
-# Эксперимент (параметры берутся из .env)
-docker compose run --rm experiment
-
-# Эксперимент с другим конфигом
-EXPERIMENT_CONFIG=configs/experiments/my_exp.toml docker compose run --rm experiment
 ```
+
+### Куда класть файлы
+
+При настройках по умолчанию из `.env.example` (`CSV_PATH=data/test_public.csv`, `ROOT_PATH=data`)
+Docker Compose монтирует директорию `data/` проекта в контейнер как `/app/data`.
+
+Положите файлы так:
+
+```
+data/
+├── test_public.csv          # входной CSV (CSV_PATH=data/test_public.csv)
+└── audio/                   # аудиофайлы, пути из колонки filepath CSV
+    ├── speaker_a_001.flac
+    └── ...
+```
+
+Результат (`submission.csv`) также появится в `data/` на хосте (`OUT_PATH=data/submission.csv`).
+
+> **Важно:** `CSV_PATH`, `OUT_PATH` и `ROOT_PATH` в `.env` — это пути **внутри контейнера**
+> (т.е. относительно `/app/`), а не пути на хосте. Не указывайте абсолютные пути хоста.
+
 
 **Требования для Docker:** Docker Engine ≥ 24, [nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/).
 
@@ -94,7 +106,10 @@ CSV_PATH=data/other.csv docker compose run --rm infer
 
 ## Данные
 
-CSV-файл должен содержать колонку `filepath` с относительными путями к аудиофайлам.
+### Формат CSV
+
+CSV-файл должен содержать колонку `filepath` с относительными путями к аудиофайлам
+(относительно `ROOT_PATH`).
 Колонка `speaker_id` опциональна — нужна только для вычисления метрик в `speakerid-experiment`.
 
 ```csv

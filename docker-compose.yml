@@ -37,7 +37,7 @@ x-base: &base
   environment:
     NVIDIA_VISIBLE_DEVICES: all
   volumes:
-    - /mnt/disk/dataton/Dataton_tri_losya_49/data:/app/data
+    - ./data:/app/data
     - ./models:/app/models
     - ./configs:/app/configs
 
