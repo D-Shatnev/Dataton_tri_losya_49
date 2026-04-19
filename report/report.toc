@@ -1,0 +1,44 @@
+\babel@toc {russian}{}\relax 
+\contentsline {section}{\numberline {1}Введение и постановка задачи}{3}{section.1}%
+\contentsline {subsection}{\numberline {1.1}Задача}{3}{subsection.1.1}%
+\contentsline {subsection}{\numberline {1.2}Метрика: Precision@K}{3}{subsection.1.2}%
+\contentsline {subsection}{\numberline {1.3}Формат submission}{3}{subsection.1.3}%
+\contentsline {section}{\numberline {2}Данные}{3}{section.2}%
+\contentsline {subsection}{\numberline {2.1}Обучающий датасет (train)}{3}{subsection.2.1}%
+\contentsline {subsection}{\numberline {2.2}Тестовый датасет (test\_public)}{4}{subsection.2.2}%
+\contentsline {section}{\numberline {3}Baseline организаторов}{4}{section.3}%
+\contentsline {section}{\numberline {4}Модульный пайплайн}{4}{section.4}%
+\contentsline {section}{\numberline {5}Эксперименты с энкодерами}{5}{section.5}%
+\contentsline {subsection}{\numberline {5.1}Выводы по энкодерам}{5}{subsection.5.1}%
+\contentsline {section}{\numberline {6}Предобработка: Voice Activity Detection}{5}{section.6}%
+\contentsline {subsection}{\numberline {6.1}Гипотеза}{5}{subsection.6.1}%
+\contentsline {subsection}{\numberline {6.2}FireRedVAD}{5}{subsection.6.2}%
+\contentsline {section}{\numberline {7}Постобработка: Adaptive Score Normalization}{6}{section.7}%
+\contentsline {subsection}{\numberline {7.1}Гипотеза}{6}{subsection.7.1}%
+\contentsline {subsection}{\numberline {7.2}Реализация AS-Norm}{6}{subsection.7.2}%
+\contentsline {section}{\numberline {8}Комбинация VAD + AS-Norm}{6}{section.8}%
+\contentsline {subsection}{\numberline {8.1}Расширение пула кандидатов AS-Norm}{7}{subsection.8.1}%
+\contentsline {section}{\numberline {9}Инженерные оптимизации}{7}{section.9}%
+\contentsline {subsection}{\numberline {9.1}Префетч данных}{7}{subsection.9.1}%
+\contentsline {subsection}{\numberline {9.2}Компиляция модели}{7}{subsection.9.2}%
+\contentsline {section}{\numberline {10}Fine-tuning ReDimNet-b6}{8}{section.10}%
+\contentsline {subsection}{\numberline {10.1}Мотивация}{8}{subsection.10.1}%
+\contentsline {subsection}{\numberline {10.2}Loss: AAM-Softmax (ArcFace)}{8}{subsection.10.2}%
+\contentsline {subsection}{\numberline {10.3}3-стадийная стратегия}{8}{subsection.10.3}%
+\contentsline {subsection}{\numberline {10.4}Аугментации (Stage 1--2)}{8}{subsection.10.4}%
+\contentsline {subsection}{\numberline {10.5}Инфраструктура обучения}{8}{subsection.10.5}%
+\contentsline {subsection}{\numberline {10.6}Промежуточные результаты обучения}{9}{subsection.10.6}%
+\contentsline {subsection}{\numberline {10.7}Результаты на test\_public}{9}{subsection.10.7}%
+\contentsline {section}{\numberline {11}Итоговое решение}{10}{section.11}%
+\contentsline {subsection}{\numberline {11.1}Сводная таблица прогресса}{10}{subsection.11.1}%
+\contentsline {section}{\numberline {12}Выводы}{10}{section.12}%
+\contentsline {section}{\numberline {13}Дальнейшее развитие}{11}{section.13}%
+\contentsline {subsection}{\numberline {13.1}Завершение обучения}{11}{subsection.13.1}%
+\contentsline {subsection}{\numberline {13.2}Quality-aware scoring}{11}{subsection.13.2}%
+\contentsline {subsection}{\numberline {13.3}Multi-system fusion}{11}{subsection.13.3}%
+\contentsline {subsection}{\numberline {13.4}Sub-center ArcFace}{11}{subsection.13.4}%
+\contentsline {subsection}{\numberline {13.5}Расширенные аугментации}{12}{subsection.13.5}%
+\contentsline {subsection}{\numberline {13.6}Embedding post-processing}{12}{subsection.13.6}%
+\contentsline {section}{\numberline {14}Воспроизводимость}{12}{section.14}%
+\contentsline {subsection}{\numberline {14.1}Зависимости}{12}{subsection.14.1}%
+\contentsline {subsection}{\numberline {14.2}Модели}{12}{subsection.14.2}%

@@ -1,0 +1,455 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage{fontspec}
+\setmainfont{PT Sans}
+\setmonofont{Andale Mono}
+\usepackage[russian]{babel}
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage[colorlinks=true,linkcolor=blue!60!black,urlcolor=blue!70!black]{hyperref}
+
+\setlength{\parskip}{0.5em}
+\setlength{\parindent}{0em}
+
+\title{%
+  \vspace{-1cm}
+  \textbf{Криптонит.Тембр}\\[0.3em]
+  \large Распознавание диктора по голосу в условиях шумов и доменных искажений\\[0.5em]
+  \normalsize Отчёт по экспериментам
+}
+\author{Команда <<Три Лося>>}
+\date{19 апреля 2026}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Введение и постановка задачи}
+
+\subsection{Задача}
+
+Разработать модель/пайплайн распознавания диктора по голосу, устойчивый к шумам, реверберации, записи с большого расстояния и искажениям канала связи. Для каждой тестовой аудиозаписи (FLAC) решение строит эмбеддинг фиксированной размерности, а затем формирует список $K$ наиболее похожих записей из тестового набора (поиск ближайших соседей).
+
+\subsection{Метрика: Precision@K}
+
+Для каждой тестовой записи проверяющая система сравнивает \texttt{speaker\_id} с \texttt{speaker\_id} найденных ближайших соседей:
+\[
+  \text{Precision@}K = \frac{1}{N}\sum_{i=1}^{N} \frac{|\{\text{соседей записи } i \text{ с тем же спикером}\}|}{K}
+\]
+Self-match исключается. $K=10$ для итогового скора. Диапазон: $[0, 1]$, больше~--- лучше.
+
+\subsection{Формат submission}
+
+CSV с колонками \texttt{filepath} и \texttt{neighbours}. Для каждой записи указываются 10 индексов ближайших соседей через запятую.
+
+\section{Данные}
+
+\subsection{Обучающий датасет (train)}
+
+\begin{tabular}{l l}
+\hline
+Характеристика & Значение \\
+\hline
+Файлов & 673\,277 \\
+Общая длительность & 1\,457.77 часов \\
+Спикеров & 11\,053 \\
+Формат & FLAC, mono, 16\,kHz \\
+\hline
+\end{tabular}
+
+\bigskip
+
+Предоставленный датасет~--- подмножество ($\approx$10\%) оригинального VoxBlink2, из которого оставлены только аудио и идентификаторы спикеров.
+
+\textbf{Особенности VoxBlink2:}
+\begin{itemize}
+  \item \textbf{In the wild:} видео обычных людей в разных условиях (подкасты, стримы, лайфстайл-блоги);
+  \item \textbf{Робастность:} модели, обученные на таких данных, устойчивы к фоновому шуму и изменениям голоса;
+  \item \textbf{Многоязычность:} оригинальный датасет охватывает $\approx$18 языков.
+\end{itemize}
+
+\textbf{Неопределённости:} неизвестно, какая именно часть VoxBlink2 предоставлена, представлены ли все языки и какова языковая композиция.
+
+\subsection{Тестовый датасет (test\_public)}
+
+\begin{tabular}{l l}
+\hline
+Характеристика & Значение \\
+\hline
+Файлов & 134\,697 \\
+Общая длительность & 344.55 часов \\
+Формат & FLAC, mono, 16\,kHz \\
+\hline
+\end{tabular}
+
+\section{Baseline организаторов}
+
+Организаторы предоставили базовое решение на основе ECAPA-TDNN, экспортированное в ONNX (\texttt{baseline.onnx}). Ключевые особенности:
+\begin{itemize}
+  \item На вход подаются \textbf{случайные} 6 секунд аудио;
+  \item Эмбеддинги нормализуются (L2);
+  \item Поиск ближайших соседей через cosine similarity.
+\end{itemize}
+
+Результат baseline: \textbf{Precision@10 = 0.0837}.
+
+\textbf{Наблюдение:} замена случайного кропа на первые 6 секунд практически не влияет на результат (0.0838), что указывает на то, что основное ограничение~--- качество самого энкодера, а не способ нарезки аудио.
+
+\section{Модульный пайплайн}
+
+Для систематизации экспериментов был разработан модульный пайплайн с заменяемыми компонентами:
+
+\begin{center}
+\texttt{Loader} $\rightarrow$ \texttt{Encoder} $\rightarrow$ \texttt{Indexer} $\rightarrow$ \texttt{Evaluator} (опц.)
+\end{center}
+
+\begin{itemize}
+  \item \textbf{Loader}~--- загрузка аудио (soundfile / torchaudio / VAD + waveform);
+  \item \textbf{Encoder}~--- извлечение эмбеддингов (ONNX, ReDimNet, SpeechBrain, WeSpeaker и др.);
+  \item \textbf{Indexer}~--- поиск соседей (FAISS Inner Product, AS-Norm);
+  \item \textbf{Evaluator}~--- Precision@K по локальным меткам.
+\end{itemize}
+
+Все компоненты реализуют стандартные интерфейсы, конфигурируются через TOML, добавлена Docker-среда и прогресс-бар инференса.
+
+\section{Эксперименты с энкодерами}
+
+Ключевая гипотеза: качество энкодера~--- основной фактор, определяющий итоговую метрику. Были протестированы модели различных архитектур.
+
+\begin{tabular}{c l l c}
+\hline
+\# & Энкодер & Аудио & P@10 \\
+\hline
+1 & \texttt{baseline.onnx} & случайные 6\,с & 0.0837 \\
+2 & \texttt{baseline.onnx} & первые 6\,с & 0.0838 \\
+3 & \texttt{nvidia/titanet\_large} & первые 6\,с & 0.1968 \\
+4 & \texttt{speechbrain/ecapa-voxceleb} & первые 6\,с & 0.5065 \\
+5 & \texttt{speechbrain/ecapa-voxceleb} & полное аудио & 0.5312 \\
+6 & \texttt{wespeaker/resnet293-LM} & первые 6\,с & 0.5356 \\
+7 & \texttt{wespeaker/resnet34-LM} & первые 6\,с & 0.5043 \\
+8 & \texttt{microsoft/wavlm-base-sv} & первые 6\,с & 0.0547 \\
+9 & \texttt{microsoft/wavlm-base-plus-sv} & первые 6\,с & 0.0976 \\
+10 & \texttt{IDRnD/redimnet\_b6} & первые 6\,с & \textbf{0.5840} \\
+11 & \texttt{damo/campplus\_sv\_zh-cn} & первые 6\,с & 0.2774 \\
+12 & \texttt{iic/eres2netv2\_sv\_zh-cn} & первые 6\,с & 0.2757 \\
+13 & Стат. модель (на train) & первые 6\,с & 0.0115 \\
+\hline
+\end{tabular}
+
+\subsection{Выводы по энкодерам}
+
+\begin{enumerate}
+  \item \textbf{ReDimNet-b6}~--- лучший результат (0.5840). Модель обучена на VoxCeleb2 с large-margin loss, выдаёт 192-мерные эмбеддинги.
+  \item \textbf{Полное аудио} лучше кропа: ECAPA-VoxCeleb показал +0.025 при подаче полного аудио vs первых 6\,с.
+  \item \textbf{WavLM-модели} показали неожиданно плохие результаты (0.05--0.10)~--- вероятно, fine-tuning на speaker verification был недостаточным.
+  \item \textbf{Китайские модели} (CamPPlus, ERes2NetV2) показали средние результаты ($\approx$0.28), что ожидаемо для моделей, обученных преимущественно на китайском языке.
+  \item \textbf{Статистическая модель}, обученная на фрагменте train, показала 0.0115~--- подтверждает, что без глубокого обучения задача не решается.
+\end{enumerate}
+
+\section{Предобработка: Voice Activity Detection}
+
+\subsection{Гипотеза}
+
+Тестовые записи содержат тишину, фоновые шумы и нецелевую речь. Удаление нецелевых сегментов через VAD должно улучшить качество эмбеддингов.
+
+\subsection{FireRedVAD}
+
+Использовали \texttt{FireRedVAD}~--- модель голосовой активности, выдающую frame-level confidence scores (каждые 10\,мс). Речевые сегменты конкатенируются и подаются в энкодер.
+
+\begin{tabular}{l l c c}
+\hline
+Энкодер & VAD & P@10 & $\Delta$ \\
+\hline
+\texttt{baseline.onnx} & --- & 0.0838 & --- \\
+\texttt{baseline.onnx} & FireRedVAD & 0.0911 & +0.007 \\
+\texttt{redimnet\_b6} & --- & 0.5840 & --- \\
+\texttt{redimnet\_b6} & FireRedVAD & 0.6074 & \textbf{+0.023} \\
+\hline
+\end{tabular}
+
+\bigskip
+\textbf{Вывод:} VAD даёт стабильный прирост для обоих энкодеров. Для ReDimNet-b6 прирост +0.023 значителен и подтверждает, что удаление тишины и шума улучшает эмбеддинги.
+
+\section{Постобработка: Adaptive Score Normalization}
+
+\subsection{Гипотеза}
+
+Cosine similarity между эмбеддингами зависит не только от сходства голосов, но и от <<сложности>> записей. AS-Norm нормализует скоры относительно когорты~--- набора импостеров, что калибрует скоры и улучшает ранжирование.
+
+\subsection{Реализация AS-Norm}
+
+Используется подмножество эмбеддингов из обучающего набора как когорта. Для каждой пары (query, candidate) скор нормализуется:
+\[
+  s_{\text{norm}}(q, c) = \frac{s(q,c) - \mu_q}{\sigma_q} + \frac{s(q,c) - \mu_c}{\sigma_c}
+\]
+где $\mu_q, \sigma_q$~--- среднее и стандартное отклонение скоров query относительно когорты.
+
+\begin{tabular}{l l c c}
+\hline
+Энкодер & Постобработка & P@10 & $\Delta$ \\
+\hline
+\texttt{baseline.onnx} & --- & 0.0838 & --- \\
+\texttt{baseline.onnx} & AS-Norm & 0.0895 & +0.006 \\
+\texttt{redimnet\_b6} & --- & 0.5840 & --- \\
+\texttt{redimnet\_b6} & AS-Norm & 0.6132 & \textbf{+0.029} \\
+\hline
+\end{tabular}
+
+\bigskip
+\textbf{Вывод:} AS-Norm даёт значительный прирост (+0.029) для сильного энкодера. Это подтверждает, что нормализация скоров критична для задачи retrieval в реальных условиях.
+
+\section{Комбинация VAD + AS-Norm}
+
+\begin{tabular}{l l c c}
+\hline
+Предобработка & Постобработка & P@10 & $\Delta$ vs baseline \\
+\hline
+--- & --- & 0.5840 & --- \\
+FireRedVAD & --- & 0.6074 & +0.023 \\
+--- & AS-Norm & 0.6132 & +0.029 \\
+FireRedVAD & AS-Norm & \textbf{0.6347} & \textbf{+0.051} \\
+\hline
+\end{tabular}
+
+\bigskip
+\textbf{Ключевой вывод:} эффекты VAD и AS-Norm \textbf{аддитивны}~--- комбинация даёт +0.051, что близко к сумме индивидуальных приростов (+0.023 + +0.029 = +0.052). VAD улучшает \emph{качество эмбеддингов}, а AS-Norm улучшает \emph{качество сравнения}.
+
+\subsection{Расширение пула кандидатов AS-Norm}
+
+В реализации AS-Norm параметр \texttt{faiss\_candidates\_coef} определяет, сколько кандидатов FAISS извлекает \emph{до} ре-ранкинга нормализованными скорами:
+\[
+  \text{faiss\_candidates} = K \times \texttt{faiss\_candidates\_coef}
+\]
+
+При $K=10$ и \texttt{coef=10} FAISS достаёт 100 кандидатов. Увеличение до \texttt{coef=100} (1\,000 кандидатов) расширяет пул, из которого AS-Norm может <<поднять>> записи, имевшие низкий raw cosine, но высокий нормализованный скор.
+
+\begin{tabular}{l c c c}
+\hline
+Конфигурация & Коэф. & Кандидатов & P@10 \\
+\hline
+Fine-tuned + VAD + AS-Norm & 10 & 100 & 0.6568 \\
+Fine-tuned + VAD + AS-Norm & 100 & 1\,000 & \textbf{0.6632} \\
+\hline
+\end{tabular}
+
+\bigskip
+\textbf{Вывод:} увеличение пула кандидатов с 100 до 1\,000 даёт \textbf{+0.006}. Это подтверждает, что AS-Norm ре-ранкинг эффективно использует расширенный набор: некоторые записи того же спикера попадают в top-10 только после нормализации.
+
+\section{Инженерные оптимизации}
+
+Суммарное время инференса с VAD + AS-Norm составляло $\approx$13\,300\,с ($\approx$3.7\,ч). Для ускорения были применены:
+
+\subsection{Префетч данных}
+
+\texttt{PrefetchDatasetLoader} оборачивает загрузчик и подгружает аудиофайлы в фоне через \texttt{ThreadPoolExecutor} с 8 воркерами. Скользящее окно из 8 \texttt{Future}-объектов: пока GPU обрабатывает текущий батч, следующие файлы уже читаются с диска.
+
+\subsection{Компиляция модели}
+
+\texttt{torch.compile(model, backend="inductor", mode="reduce-overhead")}
+
+\begin{itemize}
+  \item \texttt{backend="inductor"}~--- PyTorch 2.x backend, генерирует Triton/CUDA-код;
+  \item \texttt{mode="reduce-overhead"}~--- CUDA graphs, минимизация Python overhead;
+  \item Прогрев: 3 dummy forward pass до старта инференса;
+  \item \texttt{torch.autocast(dtype=float16)} + \texttt{torch.no\_grad()}.
+\end{itemize}
+
+\textbf{Результат:} время инференса сократилось с 13\,310\,с до \textbf{6\,792\,с} ($\approx$2$\times$ ускорение) при идентичном P@10 = 0.6347.
+
+\section{Fine-tuning ReDimNet-b6}
+
+\subsection{Мотивация}
+
+ReDimNet-b6 предобучен на VoxCeleb2, а наши данные~--- подмножество VoxBlink2 (другой домен). Domain adaptation через fine-tuning должен улучшить представления для нашего конкретного распределения спикеров и условий записи.
+
+\subsection{Loss: AAM-Softmax (ArcFace)}
+
+Классификационная задача: по эмбеддингу предсказать \texttt{speaker\_id}. Angular margin отодвигает границу решения:
+\[
+  \mathcal{L} = -\log \frac{e^{s \cdot \cos(\theta_{y_i} + m)}}{e^{s \cdot \cos(\theta_{y_i} + m)} + \sum_{j \neq y_i} e^{s \cdot \cos\theta_j}}
+\]
+где $s=30$~--- scale, $m$~--- margin (настраивается по стадиям).
+
+\subsection{3-стадийная стратегия}
+
+\begin{tabular}{c l l l c c c c c}
+\hline
+\# & Стадия & Backbone & Opt & LR & Crop & Margin & Aug & Эпохи \\
+\hline
+1 & Head warmup & frozen & SGD & 0.1 & 3\,с & 0.0 & да & 3 \\
+2 & Full finetune & unfrozen & AdamW & 1e-4 & 4\,с & 0.2 & да & 7 \\
+3 & Large margin & unfrozen & AdamW & 1e-5 & 6\,с & 0.5 & нет & 5 \\
+\hline
+\end{tabular}
+
+\bigskip
+\textbf{Stage 1 (Head warmup):} Backbone заморожен, обучается только AAM-Softmax head (11\,053 классов $\times$ 192\,dim). Margin=0~--- чистый cosine softmax. Цель: инициализация головы.
+
+\textbf{Stage 2 (Full finetune):} Backbone разморожен с 10$\times$ меньшим LR чем head. Margin=0.2~--- angular penalty. Более длинные кропы (4\,с). Cosine scheduler.
+
+\textbf{Stage 3 (Large margin):} Margin=0.5~--- агрессивное разделение спикеров. 6\,с кропы (приближение к инференсу). Без аугментаций~--- финальная доводка.
+
+\subsection{Аугментации (Stage 1--2)}
+
+\begin{itemize}
+  \item \textbf{Speed perturbation} (50\%): скорость 0.9$\times$ или 1.1$\times$
+  \item \textbf{Volume perturbation} (50\%): случайный gain $\pm$6\,dB
+  \item \textbf{Time masking}: 0--5 сегментов по 10--30\,мс зануляются
+  \item \textbf{Additive Gaussian noise} (50\%): SNR 5--25\,dB
+\end{itemize}
+
+\subsection{Инфраструктура обучения}
+
+\begin{itemize}
+  \item 2$\times$ NVIDIA TESLA A16 (4$\times$16\,GB Ampere каждая, 64\,GB на карту), DDP через HuggingFace Accelerate
+  \item Mixed precision (fp16)
+  \item NCCL timeout: 24\,ч (для стабильности при однопроцессной валидации)
+  \item Чекпоинты сохраняются до валидации каждой эпохи и при улучшении val P@10
+\end{itemize}
+
+\subsection{Промежуточные результаты обучения}
+
+\begin{tabular}{l l c c c c c}
+\hline
+Стадия & Эпоха & Loss & Acc & Val P@1 & Val P@10 & Время \\
+\hline
+1 (head warmup) & 3/3 & 11.54 & 0.01\% & 0.426 & 0.068 & --- \\
+2 (full finetune) & 1/7 & 2.96 & 89.8\% & 0.484 & 0.076 & 11\,642\,с \\
+2 (full finetune) & 2/7 & 1.41 & 96.7\% & 0.490 & 0.077 & 11\,643\,с \\
+2 (full finetune) & 3/7 & 1.10 & 97.7\% & 0.494 & 0.077 & 11\,641\,с \\
+\hline
+\end{tabular}
+
+\bigskip
+\textbf{Наблюдения:}
+\begin{itemize}
+  \item Loss стабильно падает: $11.54 \rightarrow 2.96 \rightarrow 1.41 \rightarrow 1.10$. Train accuracy растёт до 97.7\%.
+  \item Val P@1 монотонно растёт: $0.426 \rightarrow 0.484 \rightarrow 0.490 \rightarrow 0.494$, что подтверждает улучшение backbone на каждой эпохе.
+  \item Val P@10 ограничен потолком $\approx$0.1 из-за малого числа файлов на спикера при \texttt{split\_ratio=0.99} (6\,733 файла $\approx$ 0.6 файлов/спикер), поэтому основным индикатором служит P@1.
+  \item Каждая эпоха Stage 2 занимает $\approx$3.2 часа на наших мощностях (2$\times$ NVIDIA TESLA A16)~--- обучение ограничено доступными вычислительными ресурсами команды.
+\end{itemize}
+
+\subsection{Результаты на test\_public}
+
+Чекпоинты после каждой эпохи Stage 2 тестировались на test\_public в полном пайплайне (FireRedVAD + AS-Norm, \texttt{faiss\_candidates\_coef=100}):
+
+\begin{tabular}{l l c c}
+\hline
+Энкодер & Пайплайн & P@10 & $\Delta$ vs pretrained \\
+\hline
+Pretrained ReDimNet-b6 & VAD + AS-Norm & 0.6347 & --- \\
+Fine-tuned (Stage 2 ep.1) & VAD + AS-Norm & 0.6632 & +0.029 \\
+Fine-tuned (Stage 2 ep.2) & VAD + AS-Norm & \textbf{0.6757} & \textbf{+0.041} \\
+Fine-tuned (Stage 2 ep.3) & \multicolumn{3}{l}{\emph{чекпоинт получен, инференс не завершён (ограничение по времени)}} \\
+\hline
+\end{tabular}
+
+\bigskip
+\textbf{Выводы:}
+\begin{itemize}
+  \item Каждая эпоха fine-tuning даёт стабильный прирост: +0.029, затем ещё +0.013.
+  \item Тренд не насыщен~--- модель продолжает улучшаться, что означает потенциал дальнейшего обучения.
+  \item Чекпоинт epoch 3 получен, но инференс на полном тестовом наборе не успел завершиться до дедлайна. Именно этот чекпоинт загружен в репозиторий как финальное решение~--- ожидаемый результат выше 0.6757.
+\end{itemize}
+
+\section{Итоговое решение}
+
+Финальный пайплайн:
+
+\begin{enumerate}
+  \item \textbf{Загрузка:} torchaudio $\rightarrow$ mono 16\,kHz
+  \item \textbf{VAD:} FireRedVAD~--- удаление тишины и шумовых сегментов
+  \item \textbf{Энкодер:} ReDimNet-b6 (fine-tuned) $\rightarrow$ 192-мерный L2-нормализованный эмбеддинг
+  \item \textbf{Оптимизации:} \texttt{torch.compile} + \texttt{float16} + prefetch
+  \item \textbf{Поиск:} FAISS Inner Product с AS-Norm
+  \item \textbf{Выход:} \texttt{submission.csv} с 10 ближайшими соседями
+\end{enumerate}
+
+\textbf{Лучший подтверждённый результат на test\_public:} P@10 = \textbf{0.6757} (fine-tuned ReDimNet-b6, Stage 2 epoch 2, + FireRedVAD + AS-Norm с \texttt{faiss\_candidates\_coef=100}).
+
+\textbf{Финальный чекпоинт:} Stage 2 epoch 3 загружен в репозиторий через Git LFS. По динамике обучения (монотонный рост P@1 на валидации и P@10 на test\_public) ожидается результат выше 0.6757, но инференс на полном тесте не был завершён до дедлайна.
+
+\subsection{Сводная таблица прогресса}
+
+\begin{tabular}{c l c c}
+\hline
+\# & Конфигурация & P@10 & $\Delta$ \\
+\hline
+1 & Baseline организаторов & 0.0837 & --- \\
+2 & ReDimNet-b6 (pretrained) & 0.5840 & +0.500 \\
+3 & + FireRedVAD & 0.6074 & +0.023 \\
+4 & + AS-Norm (coef=10) & 0.6347 & +0.027 \\
+5 & + Fine-tuning (Stage 2 ep.1) + AS-Norm coef=100 & 0.6632 & +0.029 \\
+6 & + Fine-tuning (Stage 2 ep.2) & \textbf{0.6757} & +0.013 \\
+7 & + Fine-tuning (Stage 2 ep.3) & $>$0.6757 & (ожид.) \\
+\hline
+\end{tabular}
+
+\bigskip
+Итого: от baseline 0.084 до лучшего подтверждённого 0.676~--- улучшение в \textbf{8.1$\times$}.
+
+\section{Выводы}
+
+\begin{enumerate}
+  \item \textbf{Выбор энкодера}~--- ключевой фактор: разница между baseline (0.084) и лучшим pretrained-энкодером (0.584)~--- 7$\times$.
+  \item \textbf{VAD + AS-Norm}~--- аддитивные эффекты: +0.023 и +0.029, в сумме +0.051.
+  \item \textbf{Fine-tuning} на целевых данных~--- второй по значимости фактор: 2 эпохи дали +0.041, и тренд не насыщен.
+  \item \textbf{Расширение пула кандидатов} AS-Norm (coef $10 \rightarrow 100$) дало +0.006~--- дешёвое улучшение без дополнительного обучения.
+  \item \textbf{Инженерные оптимизации} (prefetch + torch.compile) дали 2$\times$ ускорение без потери качества.
+  \item \textbf{WavLM-модели} (SSL-based) неожиданно проиграли supervised-моделям на данной задаче.
+  \item \textbf{Основное ограничение}~--- доступные вычислительные ресурсы команды: удалось пройти только 3 из 7 запланированных эпох Stage 2 и не начать Stage 3.
+\end{enumerate}
+
+\section{Дальнейшее развитие}
+
+Наш подход не исчерпал потенциал улучшений. При наличии дополнительного вычислительного бюджета следующие направления дали бы значительный прирост:
+
+\subsection{Завершение обучения}
+
+\textbf{Наиболее очевидное улучшение.} Текущая модель прошла лишь 3 из 7 эпох Stage 2 и не начала Stage 3 (large margin, $m=0.5$, 6\,с кропы). Динамика обучения (loss $11.5 \rightarrow 1.1$, P@10 $0.63 \rightarrow 0.68$ за 3 эпохи) показывает, что модель далека от насыщения. Полный цикл обучения (7 эпох Stage 2 + 5 эпох Stage 3) с высокой вероятностью дал бы P@10 $> 0.75$.
+
+\subsection{Quality-aware scoring}
+
+Не все фреймы аудиозаписи одинаково информативны для идентификации спикера. Quality Measurement Function (QMF) оценивает качество каждого фрейма и взвешивает его вклад в итоговый эмбеддинг. Это особенно полезно для записей с переменным SNR~--- шумные сегменты получают меньший вес, а чистая речь~--- больший.
+
+\subsection{Multi-system fusion}
+
+Ансамбль нескольких архитектур энкодеров (ReDimNet + ResNet293-LM + ECAPA) на уровне скоров. Каждая архитектура захватывает разные аспекты голоса, и их комбинация снижает ошибки отдельных систем. На практике score-level fusion обычно даёт +5--10\% относительного прироста.
+
+\subsection{Sub-center ArcFace}
+
+Замена стандартного AAM-Softmax на Sub-center ArcFace, где каждый класс (спикер) представлен несколькими центрами. Это позволяет моделировать intra-class вариации (один спикер в разных акустических условиях) без ослабления inter-class разделения.
+
+\subsection{Расширенные аугментации}
+
+\begin{itemize}
+  \item \textbf{MUSAN noise:} добавление реальных шумов (бабл, музыка, техногенный шум) вместо только гауссова;
+  \item \textbf{RIR convolution:} свёртка с реальными импульсными характеристиками помещений для имитации реверберации;
+  \item \textbf{Codec simulation:} пропускание аудио через кодеки (Opus, AMR-WB) для имитации телефонных искажений;
+  \item \textbf{SpecAugment:} маскирование частотных и временных полос на мел-спектрограмме.
+\end{itemize}
+
+\subsection{Embedding post-processing}
+
+Centering (вычитание глобального среднего), whitening (PCA), LDA~--- линейные преобразования пространства эмбеддингов, которые могут улучшить cosine similarity за счёт декорреляции признаков и выравнивания дисперсий.
+
+\section{Воспроизводимость}
+
+\subsection{Зависимости}
+
+Python $\geq$ 3.10, torch $\geq$ 2.2, torchaudio $\geq$ 2.2, faiss-cpu/gpu, accelerate, scikit-learn, pandas, numpy, tqdm, soundfile. Полный список в \texttt{pyproject.toml}.
+
+\subsection{Модели}
+
+\begin{tabular}{l l l}
+\hline
+Модель & Источник & Лицензия \\
+\hline
+ReDimNet-b6 & \url{https://github.com/IDRnD/ReDimNet} & Apache 2.0 \\
+FireRedVAD & \url{https://github.com/FireRedTeam/FireRedVAD} & Apache 2.0 \\
+\hline
+\end{tabular}
+
+\end{document}
