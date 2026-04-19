@@ -1,0 +1,58 @@
+{
+    "exp_dir": "./experiments/finetune_redimnet",
+    "data_base_dir": "./data",
+    "train_csv": "./data/train.csv",
+    "split_ratio": 0.99,
+    "sample_rate": 16000,
+    "num_workers": 4,
+    "device": "cuda:0",
+    "hub_repo": "IDRnD/ReDimNet",
+    "model_name": "b6",
+    "train_type": "ft_lm",
+    "dataset": "vox2",
+    "embed_dim": 192,
+    "aam_scale": 30.0,
+    "val_chunk_seconds": 6.0,
+    "val_ks": [
+        1,
+        5,
+        10
+    ],
+    "stages": [
+        {
+            "name": "head_warmup",
+            "epochs": 3,
+            "freeze_backbone": true,
+            "batch_size": 32,
+            "crop_seconds": 3.0,
+            "lr": 0.1,
+            "margin": 0.0,
+            "weight_decay": 0.0001,
+            "use_augmentations": true
+        },
+        {
+            "name": "full_finetune",
+            "epochs": 7,
+            "freeze_backbone": false,
+            "batch_size": 16,
+            "crop_seconds": 4.0,
+            "lr_backbone": 0.0001,
+            "lr_head": 0.001,
+            "margin": 0.2,
+            "weight_decay": 0.00001,
+            "use_augmentations": true
+        },
+        {
+            "name": "large_margin",
+            "epochs": 5,
+            "freeze_backbone": false,
+            "batch_size": 8,
+            "crop_seconds": 6.0,
+            "lr_backbone": 0.00001,
+            "lr_head": 0.0001,
+            "margin": 0.5,
+            "weight_decay": 0.000001,
+            "use_augmentations": false
+        }
+    ]
+}
