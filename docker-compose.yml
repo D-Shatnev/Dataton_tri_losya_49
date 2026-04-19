@@ -46,7 +46,6 @@ services:
     <<: *base
     environment:
       NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
-      CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-}
       CSV_PATH: ${CSV_PATH:-data/test_public.csv}
       OUT_PATH: ${OUT_PATH:-data/submission.csv}
       ROOT_PATH: ${ROOT_PATH:-data}
