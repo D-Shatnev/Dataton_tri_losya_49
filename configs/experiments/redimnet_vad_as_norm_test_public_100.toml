@@ -10,14 +10,14 @@ speaker_id_col = "speaker_id"
 chunk_seconds  = 6.0
 
 [encoder]
-type          = "redimnet"
-model_path    = ""
-model_name    = "b6"
-train_type    = "ft_lm"
-dataset       = "vox2"
-device        = "auto"
-embedding_dim = 192
-force_reload  = false
+type           = "redimnet"
+model_path     = "models/backbone_stage2_epoch3.pt"
+model_name     = "b6"
+train_type     = "ft_lm"
+dataset        = "vox2"
+device         = "auto"
+embedding_dim  = 192
+force_reload   = false
 
 [loader]
 type            = "soundfile"
@@ -33,12 +33,12 @@ speech_threshold = 0.4
 min_speech_frame = 20
 
 [index]
-backend          = "faiss_as_norm"
-topk             = 10
-cohort_size      = 1000   # random cohort size for mu/sigma estimation
-top_n            = 200    # top-N cohort scores used for statistics (~20% of cohort_size)
-cohort_seed      = 42     # fixed seed for reproducibility
-faiss_candidates_coef = 100    # FAISS retrieves this many candidates before AS-Norm re-ranking (>= topk)
+backend               = "faiss_as_norm"
+topk                  = 10
+cohort_size           = 1000
+top_n                 = 200
+cohort_seed           = 42
+faiss_candidates_coef = 100
 
 [evaluation]
 type = "precision_at_k"
