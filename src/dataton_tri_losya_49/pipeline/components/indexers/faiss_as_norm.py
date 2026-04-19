@@ -127,7 +127,7 @@ class FaissASNormIndexer:
             raise ValueError("Need at least 2 embeddings to build neighbors")
 
         k = int(topk)
-        fc = int(self.faiss_candidates)
+        fc = int(topk * self.faiss_candidates_coef)
         if fc < k:
             raise ValueError(f"faiss_candidates ({fc}) must be >= topk ({k})")
 
