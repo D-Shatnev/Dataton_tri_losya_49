@@ -45,8 +45,8 @@ venv/
 /experiments/*/*.npy
 /experiments/*/submission.csv
 
-# Model artifacts: keep directory, ignore large weights.
-models/*
+# Model artifacts: weights are tracked via Git LFS (see .gitattributes).
+# Only the directory placeholder is kept here; actual weight files go through LFS.
 !models/.gitkeep
 
 # Local (machine-specific) experiment configs.
