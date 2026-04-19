@@ -166,8 +166,8 @@ class IndexSection:
             Only used when backend is "faiss_as_norm".
         cohort_seed: Random seed for cohort sampling. Ensures reproducibility.
             Only used when backend is "faiss_as_norm".
-        faiss_candidates: Number of candidates retrieved by FAISS before AS-Norm
-            re-ranking. Must be >= topk. Recommended: 5-10x topk.
+        faiss_candidates_coef: coefficient to multiplate topk on for get number of candidates retrieved by FAISS before AS-Norm
+            re-ranking. Must be >= 1. Recommended: 5-10x topk.
             Only used when backend is "faiss_as_norm".
     """
 
@@ -176,7 +176,7 @@ class IndexSection:
     cohort_size: int = 1000
     top_n: int = 200
     cohort_seed: int = 42
-    faiss_candidates: int = 100
+    faiss_candidates_coef: int = 10
 
 
 # ---------------------------------------------------------------------------
@@ -428,7 +428,7 @@ def load_experiment_config(path: Path) -> ExperimentConfig:
             cohort_size=int(idx_raw.get("cohort_size", 1000)),
             top_n=int(idx_raw.get("top_n", 200)),
             cohort_seed=int(idx_raw.get("cohort_seed", 42)),
-            faiss_candidates=int(idx_raw.get("faiss_candidates", 100)),
+            faiss_candidates_coef=int(idx_raw.get("faiss_candidates_coef", 100)),
         ),
         evaluation=EvaluationSection(
             type=str(eval_raw.get("type", "precision_at_k")),
@@ -491,7 +491,7 @@ def load_inference_config(path: Path) -> InferenceConfig:
             cohort_size=int(idx_raw.get("cohort_size", 1000)),
             top_n=int(idx_raw.get("top_n", 200)),
             cohort_seed=int(idx_raw.get("cohort_seed", 42)),
-            faiss_candidates=int(idx_raw.get("faiss_candidates", 100)),
+            faiss_candidates_coef=int(idx_raw.get("faiss_candidates_coef", 100)),
         ),
         defaults=InferenceDefaultsSection(
             chunk_seconds=float(def_raw.get("chunk_seconds", DEFAULT_CHUNK_SECONDS)),

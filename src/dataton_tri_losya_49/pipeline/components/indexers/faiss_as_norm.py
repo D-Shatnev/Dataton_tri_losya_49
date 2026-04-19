@@ -91,7 +91,7 @@ class FaissASNormIndexer:
     cohort_size: int = 1000
     top_n: int = 200
     cohort_seed: int = 42
-    faiss_candidates: int = 100
+    faiss_candidates_coef: int = 10
 
     def __post_init__(self) -> None:
         if self.cohort_size <= 0:
@@ -100,8 +100,8 @@ class FaissASNormIndexer:
             raise ValueError("top_n must be > 0")
         if self.top_n > self.cohort_size:
             raise ValueError(f"top_n ({self.top_n}) must be <= cohort_size ({self.cohort_size})")
-        if self.faiss_candidates <= 0:
-            raise ValueError("faiss_candidates must be > 0")
+        if self.faiss_candidates_coef < 1:
+            raise ValueError("faiss_candidates_coef must be >= 1")
 
     def neighbors(self, embeddings: np.ndarray, topk: int) -> np.ndarray:
         """Compute top-k neighbors using AS-Norm normalized cosine scores.
@@ -116,7 +116,7 @@ class FaissASNormIndexer:
 
         Raises:
             ValueError: If embeddings is not 2-D, contains fewer than 2 rows,
-                or faiss_candidates < topk.
+                or faiss_candidates < 1.
         """
         emb = np.asarray(embeddings, dtype=np.float32)
         if emb.ndim != 2:

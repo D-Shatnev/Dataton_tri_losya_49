@@ -27,7 +27,7 @@ topk             = 10
 cohort_size      = 1000   # random cohort size for mu/sigma estimation (~515 MB RAM)
 top_n            = 200    # top-N cohort scores used for statistics (~20% of cohort_size)
 cohort_seed      = 42     # fixed seed for reproducibility
-faiss_candidates = 100    # FAISS retrieves this many candidates before AS-Norm re-ranking (>= topk)
+faiss_candidates_coef = 50    # FAISS retrieves this many candidates before AS-Norm re-ranking (>= 1)
 
 [evaluation]
 type = "precision_at_k"

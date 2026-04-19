@@ -197,7 +197,7 @@ def build_indexer(section: IndexSection) -> Indexer:
             cohort_size=section.cohort_size,
             top_n=section.top_n,
             cohort_seed=section.cohort_seed,
-            faiss_candidates=section.faiss_candidates,
+            faiss_candidates_coef=section.faiss_candidates_coef,
         )
 
     raise ValueError(
